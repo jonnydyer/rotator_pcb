@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rotator Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px 0;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        h1 {
+            margin: 0;
+        }
+        .card {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .status {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+        .status-item {
+            text-align: center;
+            flex: 1;
+        }
+        .status-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background-color: #3498db;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .color-preview {
+            width: 30px;
+            height: 30px;
+            display: inline-block;
+            margin-left: 10px;
+            border: 1px solid #ccc;
+            vertical-align: middle;
+        }
+        .tab {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+            border-radius: 5px 5px 0 0;
+        }
+        .tab button {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 16px;
+            transition: 0.3s;
+            color: #333;
+        }
+        .tab button:hover {
+            background-color: #ddd;
+        }
+        .tab button.active {
+            background-color: #3498db;
+            color: white;
+        }
+        .tabcontent {
+            display: none;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+            background-color: white;
+        }
+        .active-tab {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
+        #ota-form {
+            margin-top: 20px;
+        }
+        #ota-progress {
+            width: 100%;
+            height: 20px;
+            background-color: #f3f3f3;
+            margin-top: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #ota-progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #4CAF50;
+            transition: width 0.3s;
+        }
+        #ota-status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        
+        /* Status message styles */
+        .success {
+            color: #4CAF50;
+            background-color: #f0f8f0;
+            border: 1px solid #4CAF50;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .error {
+            color: #F44336;
+            background-color: #fdf0f0;
+            border: 1px solid #F44336;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .info {
+            color: #2196F3;
+            background-color: #f0f4ff;
+            border: 1px solid #2196F3;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Rotator Control</h1>
+    </header>
+    
+    <div class="container">
+        <div class="card">
+            <div class="status">
+                <div class="status-item">
+                    <div>Current Position</div>
+                    <div class="status-value" id="current-angle">-</div>
+                    <div id="current-position-counts">-</div>
+                </div>
+                <div class="status-item">
+                    <div>Current Color</div>
+                    <div class="color-preview" id="current-color"></div>
+                </div>
+                <div class="status-item">
+                    <div>Auto Rotation</div>
+                    <div class="status-value" id="auto-rotation-status">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab">
+            <button class="tablinks active" onclick="openTab(event, 'control')">Control</button>
+            <button class="tablinks" onclick="openTab(event, 'settings')">Settings</button>
+            <button class="tablinks" onclick="openTab(event, 'calibration')">Calibration</button>
+            <button class="tablinks" onclick="openTab(event, 'updates')">Updates</button>
+        </div>
+        
+        <!-- Control Tab -->
+        <div id="control" class="tabcontent active-tab">
+            <h2>Rotate</h2>
+            <div class="action-buttons">
+                <button onclick="rotate(0)">0°</button>
+                <button onclick="rotate(90)">90°</button>
+                <button onclick="rotate(180)">180°</button>
+                <button onclick="rotate(270)">270°</button>
+            </div>
+            
+            <h2>Auto Rotation</h2>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="auto-rotation-toggle" onchange="toggleAutoRotation()">
+                    Enable Auto Rotation
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="rotation-interval">Rotation Interval (seconds)</label>
+                <input type="number" id="rotation-interval" min="5" value="60">
+                <button onclick="saveRotationInterval()">Save</button>
+            </div>
+        </div>
+        
+        <!-- Settings Tab -->
+        <div id="settings" class="tabcontent">
+            <h2>WiFi Settings</h2>
+            <div class="form-group">
+                <label for="ap-ssid">Access Point SSID</label>
+                <input type="text" id="ap-ssid">
+            </div>
+            <div class="form-group">
+                <label for="ap-password">Access Point Password</label>
+                <input type="password" id="ap-password">
+            </div>
+            <button onclick="saveWifiSettings()">Save WiFi Settings</button>
+            
+            <h2>Color Settings</h2>
+            <div class="form-group">
+                <label for="color-0">0° Position Color</label>
+                <input type="color" id="color-0">
+                <div class="color-preview" id="preview-0"></div>
+            </div>
+            <div class="form-group">
+                <label for="color-90">90° Position Color</label>
+                <input type="color" id="color-90">
+                <div class="color-preview" id="preview-90"></div>
+            </div>
+            <div class="form-group">
+                <label for="color-180">180° Position Color</label>
+                <input type="color" id="color-180">
+                <div class="color-preview" id="preview-180"></div>
+            </div>
+            <div class="form-group">
+                <label for="color-270">270° Position Color</label>
+                <input type="color" id="color-270">
+                <div class="color-preview" id="preview-270"></div>
+            </div>
+            <button onclick="saveColorSettings()">Save Color Settings</button>
+            
+            <h2>Reset to Defaults</h2>
+            <button onclick="resetSettings()">Reset All Settings</button>
+        </div>
+        
+        <!-- Calibration Tab -->
+        <div id="calibration" class="tabcontent">
+            <h2>Position Calibration</h2>
+            <p>Set the current physical position as the new zero reference point. This will maintain the relative spacing between all calibrated positions.</p>
+            <div class="action-buttons">
+                <button onclick="setZeroPosition()">Set Zero Position</button>
+            </div>
+            
+            <h2>Go to Position</h2>
+            <p>Move to a specific encoder position for testing or calibration.</p>
+            <div class="form-group">
+                <label for="goto-position">Target Position (encoder counts)</label>
+                <input type="number" id="goto-position" placeholder="Enter position in counts">
+                <button id="goto-button" onclick="gotoPosition()">Go to Position</button>
+            </div>
+            <div id="goto-status" class="hidden"></div>
+            
+            <h2>Fine Tuning</h2>
+            <p>Current detected angle: <span id="calibration-current-angle">-</span>°</p>
+            <div class="form-group">
+                <label for="pos-0-degrees">0° Position (encoder counts)</label>
+                <input type="number" id="pos-0-degrees">
+            </div>
+            <div class="form-group">
+                <label for="pos-90-degrees">90° Position (encoder counts)</label>
+                <input type="number" id="pos-90-degrees">
+            </div>
+            <div class="form-group">
+                <label for="pos-180-degrees">180° Position (encoder counts)</label>
+                <input type="number" id="pos-180-degrees">
+            </div>
+            <div class="form-group">
+                <label for="pos-270-degrees">270° Position (encoder counts)</label>
+                <input type="number" id="pos-270-degrees">
+            </div>
+            <button onclick="savePositionSettings()">Save Position Settings</button>
+        </div>
+        
+        <!-- Updates Tab -->
+        <div id="updates" class="tabcontent">
+            <h2>OTA Firmware Update</h2>
+            <form id="ota-form" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="firmware">Select Firmware File</label>
+                    <input type="file" id="firmware" name="firmware" accept=".bin">
+                </div>
+                <button type="button" onclick="uploadFirmware()">Upload Firmware</button>
+            </form>
+            <div id="ota-progress" class="hidden">
+                <div id="ota-progress-bar"></div>
+            </div>
+            <div id="ota-status" class="hidden"></div>
+        </div>
+        
+        <div id="loading" class="loading hidden">
+            <div class="loader"></div>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let statusUpdateInterval;
+        let currentStatus = {};
+        let configData = null;  // Store config separately from status
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchStatus();
+            fetchConfig();  // Load config once at startup
+            
+            // Setup color picker previews
+            document.getElementById('color-0').addEventListener('input', function() {
+                updateColorPreview('preview-0', this.value);
+            });
+            document.getElementById('color-90').addEventListener('input', function() {
+                updateColorPreview('preview-90', this.value);
+            });
+            document.getElementById('color-180').addEventListener('input', function() {
+                updateColorPreview('preview-180', this.value);
+            });
+            document.getElementById('color-270').addEventListener('input', function() {
+                updateColorPreview('preview-270', this.value);
+            });
+            
+            // Start periodic status updates
+            statusUpdateInterval = setInterval(fetchStatus, 2000);
+        });
+        
+        // Tab handling
+        function openTab(evt, tabName) {
+            let tabcontent = document.getElementsByClassName("tabcontent");
+            for (let i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].classList.remove("active-tab");
+            }
+            
+            let tablinks = document.getElementsByClassName("tablinks");
+            for (let i = 0; i < tablinks.length; i++) {
+                tablinks[i].classList.remove("active");
+            }
+            
+            document.getElementById(tabName).classList.add("active-tab");
+            evt.currentTarget.classList.add("active");
+            
+            // Refresh status when showing certain tabs
+            if (tabName === 'calibration') {
+                fetchStatus();
+            }
+        }
+        
+        // Fetch current status from the device
+        function fetchStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    currentStatus = data;
+                    updateStatusDisplay(data);
+                })
+                .catch(error => console.error('Error fetching status:', error));
+        }
+
+        // Fetch configuration from the device
+        function fetchConfig() {
+            console.log('Fetching config...');
+            fetch('/api/config')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Config data received:', data);
+                    configData = data;
+                    updateConfigDisplay(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching config:', error);
+                });
+        }
+        
+        // Update only the status display elements
+        function updateStatusDisplay(data) {
+            if (!data) {
+                console.error('No data received in updateStatusDisplay');
+                return;
+            }
+
+            // Update angle and position
+            if (data.currentAngle !== undefined) {
+                document.getElementById('current-angle').textContent = data.currentAngle + '°';
+                document.getElementById('calibration-current-angle').textContent = data.currentAngle;
+            }
+            
+            if (data.currentPosition !== undefined) {
+                document.getElementById('current-position-counts').textContent = data.currentPosition + ' counts';
+            }
+            
+            // Update color display - convert decimal to hex
+            if (data.currentColor !== undefined) {
+                const colorHex = '#' + data.currentColor.toString(16).padStart(6, '0');
+                document.getElementById('current-color').style.backgroundColor = colorHex;
+            }
+            
+            // Update auto rotation status
+            if (data.autoRotationEnabled !== undefined) {
+                document.getElementById('auto-rotation-status').textContent = data.autoRotationEnabled ? 'ON' : 'OFF';
+                document.getElementById('auto-rotation-toggle').checked = data.autoRotationEnabled;
+            }
+        }
+        
+        // Update only config-related form fields
+        function updateConfigDisplay(data) {
+            console.log('Updating config display with data:', data);
+            
+            try {
+                // Position calibration
+                const pos0 = document.getElementById('pos-0-degrees');
+                const pos90 = document.getElementById('pos-90-degrees');
+                const pos180 = document.getElementById('pos-180-degrees');
+                const pos270 = document.getElementById('pos-270-degrees');
+                
+                console.log('Position elements found:', {pos0, pos90, pos180, pos270});
+                
+                if (pos0) pos0.value = data.pos_0_degrees;
+                if (pos90) pos90.value = data.pos_90_degrees;
+                if (pos180) pos180.value = data.pos_180_degrees;
+                if (pos270) pos270.value = data.pos_270_degrees;
+                
+                // Colors
+                updateColorField('color-0', 'preview-0', data.color_0);
+                updateColorField('color-90', 'preview-90', data.color_90);
+                updateColorField('color-180', 'preview-180', data.color_180);
+                updateColorField('color-270', 'preview-270', data.color_270);
+                
+                // WiFi settings
+                const apSsid = document.getElementById('ap-ssid');
+                const apPassword = document.getElementById('ap-password');
+                
+                console.log('WiFi elements found:', {apSsid, apPassword});
+                
+                if (apSsid) apSsid.value = data.ap_ssid;
+                if (apPassword) apPassword.value = data.ap_password || '';
+                
+                // Rotation interval
+                const rotationInterval = document.getElementById('rotation-interval');
+                console.log('Rotation interval element found:', rotationInterval);
+                
+                if (rotationInterval) rotationInterval.value = data.rotation_interval;
+            } catch (error) {
+                console.error('Error in updateConfigDisplay:', error);
+            }
+        }
+        
+        // Update a color input field and its preview
+        function updateColorField(fieldId, previewId, colorValue) {
+            if (colorValue !== undefined) {
+                // Convert decimal to hex and ensure 6 digits with leading zeros
+                const hexColor = '#' + colorValue.toString(16).padStart(6, '0');
+                document.getElementById(fieldId).value = hexColor;
+                updateColorPreview(previewId, hexColor);
+            }
+        }
+        
+        // Update a color preview element
+        function updateColorPreview(previewId, color) {
+            document.getElementById(previewId).style.backgroundColor = color;
+        }
+        
+        // Command a rotation to a specific angle
+        function rotate(angle) {
+            showLoading();
+            
+            const formData = new FormData();
+            formData.append('angle', angle);
+            
+            fetch('/api/rotate', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                hideLoading();
+                if (response.ok) {
+                    // Update the status after a short delay to allow rotation to start
+                    setTimeout(fetchStatus, 500);
+                } else {
+                    alert('Failed to command rotation');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error rotating:', error);
+                alert('Error: ' + error.message);
+            });
+        }
+        
+        // Set the current position as the new zero reference point
+        function setZeroPosition() {
+            if (!confirm('This will set the current position as the new zero reference point while maintaining the relative spacing between all calibrated positions. Continue?')) {
+                return;
+            }
+            
+            showLoading();
+            
+            fetch('/api/set-zero', {
+                method: 'POST'
+            })
+            .then(response => {
+                hideLoading();
+                if (response.ok) {
+                    alert('Zero position set successfully! All calibrated positions have been updated.');
+                    fetchConfig(); // Refresh the config to show updated values
+                } else {
+                    alert('Failed to set zero position');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error setting zero position:', error);
+                alert('Error: ' + error.message);
+            });
+        }
+        
+        // Go to a specific position in encoder counts
+        function gotoPosition() {
+            const positionInput = document.getElementById('goto-position');
+            const gotoButton = document.getElementById('goto-button');
+            const statusDiv = document.getElementById('goto-status');
+            
+            const targetPosition = parseInt(positionInput.value);
+            
+            // Validate input
+            if (isNaN(targetPosition)) {
+                showGotoStatus('Please enter a valid position number', 'error');
+                return;
+            }
+            
+            // Disable button during motion
+            gotoButton.disabled = true;
+            gotoButton.textContent = 'Moving...';
+            showGotoStatus('Moving to position ' + targetPosition + '...', 'info');
+            
+            const formData = new FormData();
+            formData.append('position', targetPosition);
+            
+            fetch('/api/goto', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    showGotoStatus('Movement command sent successfully', 'success');
+                    // Update status after a short delay
+                    setTimeout(fetchStatus, 500);
+                    // Re-enable button after a delay
+                    setTimeout(() => {
+                        gotoButton.disabled = false;
+                        gotoButton.textContent = 'Go to Position';
+                    }, 2000);
+                } else {
+                    showGotoStatus('Failed to send movement command', 'error');
+                    gotoButton.disabled = false;
+                    gotoButton.textContent = 'Go to Position';
+                }
+            })
+            .catch(error => {
+                console.error('Error going to position:', error);
+                showGotoStatus('Error: ' + error.message, 'error');
+                gotoButton.disabled = false;
+                gotoButton.textContent = 'Go to Position';
+            });
+        }
+        
+        // Show status message for goto position
+        function showGotoStatus(message, type) {
+            const statusDiv = document.getElementById('goto-status');
+            statusDiv.textContent = message;
+            statusDiv.className = type; // 'success', 'error', or 'info'
+            statusDiv.classList.remove('hidden');
+            
+            // Auto-hide after 5 seconds for success/info messages
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    statusDiv.classList.add('hidden');
+                }, 5000);
+            }
+        }
+        
+        // Toggle auto-rotation
+        function toggleAutoRotation() {
+            const enabled = document.getElementById('auto-rotation-toggle').checked;
+            saveSettings({
+                auto_rotation_enabled: enabled
+            });
+        }
+        
+        // Save rotation interval
+        function saveRotationInterval() {
+            const interval = parseInt(document.getElementById('rotation-interval').value);
+            if (isNaN(interval) || interval < 5) {
+                alert('Please enter a valid interval (minimum 5 seconds)');
+                return;
+            }
+            
+            saveSettings({
+                rotation_interval: interval
+            });
+        }
+        
+        // Save WiFi settings
+        function saveWifiSettings() {
+            const ssid = document.getElementById('ap-ssid').value.trim();
+            const password = document.getElementById('ap-password').value;
+            
+            if (!ssid) {
+                alert('SSID cannot be empty');
+                return;
+            }
+            
+            saveSettings({
+                ap_ssid: ssid,
+                ap_password: password
+            });
+        }
+        
+        // Save color settings
+        function saveColorSettings() {
+            const color0 = parseInt(document.getElementById('color-0').value.substring(1), 16);
+            const color90 = parseInt(document.getElementById('color-90').value.substring(1), 16);
+            const color180 = parseInt(document.getElementById('color-180').value.substring(1), 16);
+            const color270 = parseInt(document.getElementById('color-270').value.substring(1), 16);
+            
+            saveSettings({
+                color_0: color0,
+                color_90: color90,
+                color_180: color180,
+                color_270: color270
+            });
+        }
+        
+        // Save position settings
+        function savePositionSettings() {
+            const pos0 = parseInt(document.getElementById('pos-0-degrees').value);
+            const pos90 = parseInt(document.getElementById('pos-90-degrees').value);
+            const pos180 = parseInt(document.getElementById('pos-180-degrees').value);
+            const pos270 = parseInt(document.getElementById('pos-270-degrees').value);
+            
+            if (isNaN(pos0) || isNaN(pos90) || isNaN(pos180) || isNaN(pos270)) {
+                alert('All position values must be valid numbers');
+                return;
+            }
+            
+            saveSettings({
+                pos_0_degrees: pos0,
+                pos_90_degrees: pos90,
+                pos_180_degrees: pos180,
+                pos_270_degrees: pos270
+            });
+        }
+        
+        // Generic settings save function
+        function saveSettings(settings) {
+            showLoading();
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            })
+            .then(response => {
+                hideLoading();
+                if (response.ok) {
+                    alert('Settings saved successfully');
+                    fetchConfig();  // Refresh config after save
+                } else {
+                    alert('Failed to save settings');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error saving settings:', error);
+                alert('Error: ' + error.message);
+            });
+        }
+        
+        // Reset all settings to defaults
+        function resetSettings() {
+            if (!confirm('Are you sure you want to reset all settings to defaults?')) {
+                return;
+            }
+            
+            showLoading();
+            
+            fetch('/api/reset', {
+                method: 'POST'
+            })
+            .then(response => {
+                hideLoading();
+                if (response.ok) {
+                    alert('Settings reset to defaults');
+                    fetchConfig();  // Refresh config after reset
+                } else {
+                    alert('Failed to reset settings');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error resetting settings:', error);
+                alert('Error: ' + error.message);
+            });
+        }
+        
+        // Upload firmware for OTA update
+        function uploadFirmware() {
+            const fileInput = document.getElementById('firmware');
+            if (!fileInput.files.length) {
+                alert('Please select a firmware file');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('firmware', file);
+            
+            // Show progress elements
+            document.getElementById('ota-progress').classList.remove('hidden');
+            document.getElementById('ota-status').classList.remove('hidden');
+            document.getElementById('ota-status').textContent = 'Starting upload...';
+            
+            // Reset progress bar
+            document.getElementById('ota-progress-bar').style.width = '0%';
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/update', true);
+            
+            xhr.upload.onprogress = function(event) {
+                if (event.lengthComputable) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    document.getElementById('ota-progress-bar').style.width = percentComplete + '%';
+                    document.getElementById('ota-status').textContent = 'Uploading: ' + percentComplete.toFixed(1) + '%';
+                }
+            };
+            
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    document.getElementById('ota-status').textContent = 'Update successful. Device is rebooting...';
+                    document.getElementById('ota-progress-bar').style.width = '100%';
+                    document.getElementById('ota-progress-bar').style.backgroundColor = '#4CAF50';
+                    
+                    // Stop status updates during reboot
+                    clearInterval(statusUpdateInterval);
+                    
+                    // Try to reconnect after a delay
+                    setTimeout(function() {
+                        document.getElementById('ota-status').textContent = 'Attempting to reconnect...';
+                        attemptReconnect();
+                    }, 10000);
+                } else {
+                    document.getElementById('ota-status').textContent = 'Update failed: ' + xhr.responseText;
+                    document.getElementById('ota-progress-bar').style.backgroundColor = '#F44336';
+                }
+            };
+            
+            xhr.onerror = function() {
+                document.getElementById('ota-status').textContent = 'Update failed due to network error';
+                document.getElementById('ota-progress-bar').style.backgroundColor = '#F44336';
+            };
+            
+            xhr.send(formData);
+        }
+        
+        // Attempt to reconnect after OTA update
+        function attemptReconnect() {
+            fetch('/api/status')
+                .then(response => {
+                    if (response.ok) {
+                        document.getElementById('ota-status').textContent = 'Connected successfully to updated device!';
+                        // Restart status updates
+                        statusUpdateInterval = setInterval(fetchStatus, 2000);
+                        fetchStatus();
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('ota-status').textContent = 'Still waiting for device to come online...';
+                    setTimeout(attemptReconnect, 5000);
+                });
+        }
+        
+        // Show loading indicator
+        function showLoading() {
+            document.getElementById('loading').classList.remove('hidden');
+        }
+        
+        // Hide loading indicator
+        function hideLoading() {
+            document.getElementById('loading').classList.add('hidden');
+        }
+    </script>
+</body>
+</html> 
