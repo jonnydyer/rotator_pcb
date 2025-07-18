@@ -28,13 +28,16 @@ void setupRotator() {
  */
 int32_t calculateCircularDistance(int32_t count, int32_t target_pos) {
     // Linear distance
-    int32_t linear_dist = abs(count - target_pos);
-    
-    // Circular distance (wrapping around full revolution)
-    int32_t circular_dist = full_revolution_count - linear_dist;
+    int32_t count_unwrap = (count + full_revolution_count) % full_revolution_count;
+    int32_t target_pos_unwrap = (target_pos + full_revolution_count) % full_revolution_count;
+
+    int32_t d1 = abs(count_unwrap - target_pos_unwrap);
+    int32_t min_dist = (d1 < full_revolution_count / 2 ? d1 : full_revolution_count - d1);
+    // log_i("Minimum distance from %d to %d is %d", 
+    //     count_unwrap, target_pos_unwrap, min_dist);
     
     // Return the minimum distance
-    return (linear_dist <= circular_dist) ? linear_dist : circular_dist;
+    return min_dist;
 }
 
 /**
@@ -87,23 +90,25 @@ void rotateToAngle(int angle) {
             return;
     }
     
-    int32_t currentPosition = get_current_position();
-    
     // Determine the shortest path
     // Calculate full 360 revolution in encoder counts
     int32_t fullRevolution = (config.pos_270_degrees - config.pos_0_degrees) * 4/3;
     if (fullRevolution < 0) fullRevolution = -fullRevolution;
+
+    int32_t currentPosition = get_current_position();
+    int32_t currentPosition_unwrap = currentPosition % fullRevolution;
+    int32_t wrapCounts = currentPosition-currentPosition_unwrap;
     
     // Calculate distances in both directions
-    int32_t directDistance = targetPosition - currentPosition;
+    int32_t directDistance = targetPosition - currentPosition_unwrap;
     int32_t alternateDistance = (directDistance > 0) ? 
                                 directDistance - fullRevolution : 
                                 directDistance + fullRevolution;
     
     // Choose the shortest path
     int32_t finalTarget = (abs(directDistance) <= abs(alternateDistance)) ? 
-                          targetPosition : 
-                          (directDistance > 0) ? targetPosition - fullRevolution : targetPosition + fullRevolution;
+                          targetPosition + wrapCounts : 
+                          (directDistance > 0) ? targetPosition - fullRevolution + wrapCounts : targetPosition + fullRevolution + wrapCounts;
     
     log_i("Rotating from %d° to %d°, encoder: %d -> %d", 
           currentAngle, angle, currentPosition, finalTarget);

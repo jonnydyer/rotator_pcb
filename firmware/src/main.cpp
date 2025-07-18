@@ -312,8 +312,8 @@ void IRAM_ATTR update_motion_control(void* arg) {
     if (full_revolution_count > 0) {
       int32_t distance_from_zero = abs(current_position - config.pos_0_degrees);
       
-      log_i("Unwrap check: pos=%d, pos_0=%d, dist=%d, full_rev=%d", 
-            current_position, config.pos_0_degrees, distance_from_zero, full_revolution_count);
+      // log_i("Unwrap check: pos=%d, pos_0=%d, dist=%d, full_rev=%d", 
+      //       current_position, config.pos_0_degrees, distance_from_zero, full_revolution_count);
       
       if (distance_from_zero > full_revolution_count) {
         // Determine unwrap direction
