@@ -12,10 +12,12 @@ extern volatile bool motion_active;
 // Function prototypes
 void setupRotator();
 int calculateCurrentAngle();
+int32_t calculateCircularDistance(int32_t count, int32_t target_pos);
 void rotateToAngle(int angle);
 void processAutoRotation();
 void moveToNextPosition();
 void setNeoPixelForAngle(int angle);
+void updateMotionControlCalibration();
 
 // Rotator state
 extern volatile bool auto_rotation_active;

@@ -1,22 +1,40 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include <ESP32Encoder.h>
+
 // Timer configuration
 #define LED_BLINK_INTERVAL_MS 250
 #define ENCODER_UPDATE_INTERVAL_MS 10
 #define MOTION_CONTROL_INTERVAL_MS 10
 #define AUTO_ROTATION_CHECK_INTERVAL_MS 1000
+#define DEBUG_SEND_INTERVAL_MS 100       // 10Hz debug data streaming
 
-// Motion control parameters
-#define POSITION_HYSTERESIS 20           // Encoder count hysteresis around target position
-#define DEFAULT_MAX_SPEED 6000           // Default max speed in counts/second
-#define DEFAULT_ACCELERATION 4000        // Default acceleration in counts/second²
-#define VEL_LOOP_P 3e-5 
-#define VEL_LOOP_I 6e-3
-#define VEL_LOOP_D -2e-8
-#define VEL_FILTER_PERSISTENCE 0.0
-#define SPD_ERR_PERSISTENCE 0.0
+// Structure for motion control information
+struct MotionControlInfo {
+    bool motion_active;
+    int32_t target_position;
+    float velocity;
+    float speed_error;
+    float speed_error_integral;
+    float speed_error_derivative;
+};
 
-void move_to_position(int32_t target_position, float max_speed = DEFAULT_MAX_SPEED, float acceleration = DEFAULT_ACCELERATION);
+// Getter function declarations
+int32_t get_current_position();
+float get_encoder_velocity();
+MotionControlInfo get_motion_control_info();
+
+// Motion control configuration functions
+void getMotionControlConfig(uint32_t& position_hysteresis, float& max_speed, float& acceleration,
+                           float& vel_loop_p, float& vel_loop_i, float& vel_loop_d,
+                           float& vel_filter_persistence, float& spd_err_persistence);
+void setMotionControlConfig(uint32_t position_hysteresis, float max_speed, float acceleration,
+                           float vel_loop_p, float vel_loop_i, float vel_loop_d,
+                           float vel_filter_persistence, float spd_err_persistence);
+void setFullRevolutionCount(int32_t full_revolution);
+
+// Function prototypes
+void move_to_position(int32_t target_position);
 
 #endif

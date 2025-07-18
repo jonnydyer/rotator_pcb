@@ -1,12 +1,18 @@
 #include "wifi_manager.h"
 #include "main.h"
+#include "web_ui.h"  // Include the compiled HTML
 
 // Global web server instance
 AsyncWebServer webServer(80);
+AsyncWebSocket debugWebSocket("/ws/debug");
 DNSServer dnsServer;
 
 // For tracking if OTA is in progress
 bool otaInProgress = false;
+
+// Debug WebSocket state
+bool debugStreamActive = false;
+unsigned long lastDebugSend = 0;
 
 /**
  * Start WiFi in Access Point mode
@@ -63,13 +69,102 @@ void handleDNS() {
 }
 
 /**
+ * Handle WebSocket events for debug interface
+ */
+void onDebugWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+    switch (type) {
+        case WS_EVT_CONNECT:
+            log_i("Debug WebSocket client #%u connected from %s", client->id(), client->remoteIP().toString().c_str());
+            break;
+            
+        case WS_EVT_DISCONNECT:
+            log_i("Debug WebSocket client #%u disconnected", client->id());
+            // If no clients connected, stop debug streaming
+            if (debugWebSocket.count() == 0) {
+                debugStreamActive = false;
+                log_i("Debug streaming stopped - no clients connected");
+            }
+            break;
+            
+        case WS_EVT_DATA: {
+            AwsFrameInfo *info = (AwsFrameInfo*)arg;
+            if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+                // Parse incoming message
+                String message = String((char*)data, len);
+                log_i("Debug WebSocket received: %s", message.c_str());
+                
+                if (message == "start") {
+                    debugStreamActive = true;
+                    lastDebugSend = 0; // Force immediate send
+                    log_i("Debug streaming started");
+                } else if (message == "stop") {
+                    debugStreamActive = false;
+                    log_i("Debug streaming stopped");
+                }
+            }
+            break;
+        }
+        
+        case WS_EVT_PONG:
+        case WS_EVT_ERROR:
+            break;
+    }
+}
+
+/**
+ * Setup WebSocket handlers
+ */
+void setupWebSockets() {
+    debugWebSocket.onEvent(onDebugWebSocketEvent);
+    webServer.addHandler(&debugWebSocket);
+    log_i("Debug WebSocket handler setup complete");
+}
+
+/**
+ * Send debug data to connected WebSocket clients
+ * This should be called from the debug timer at 10Hz
+ */
+void sendDebugData() {
+    if (!debugStreamActive || debugWebSocket.count() == 0) {
+        return;
+    }
+    
+    unsigned long currentTime = millis();
+    if (currentTime - lastDebugSend < DEBUG_SEND_INTERVAL_MS) {
+        return;
+    }
+    
+    // Get motion control information
+    MotionControlInfo motionInfo = get_motion_control_info();
+    
+    // Create JSON debug data
+    StaticJsonDocument<256> doc;
+    doc["timestamp"] = currentTime;
+    doc["currentPosition"] = get_current_position();
+    doc["currentVelocity"] = motionInfo.velocity;
+    doc["targetPosition"] = motionInfo.target_position;
+    doc["motionActive"] = motionInfo.motion_active;
+    
+    // Add real motion control debug data
+    doc["speedError"] = motionInfo.speed_error;
+    doc["errorIntegral"] = motionInfo.speed_error_integral;  
+    doc["errorDerivative"] = motionInfo.speed_error_derivative;
+    
+    String jsonString;
+    serializeJson(doc, jsonString);
+    
+    debugWebSocket.textAll(jsonString);
+    lastDebugSend = currentTime;
+}
+
+/**
  * Setup the web server routes and handlers
  */
 void setupWebServer() {
-    // Serve the root index page
+    // Serve the root index page from compiled HTML (PROGMEM)
     webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         log_i("Root http access");
-        request->send(SPIFFS, "/index.html", "text/html");
+        request->send(200, "text/html", html_index);
     });
     
     // API endpoint for getting current status
@@ -77,7 +172,7 @@ void setupWebServer() {
         AsyncResponseStream *response = request->beginResponseStream("application/json");
         StaticJsonDocument<256> doc;  // Smaller document for just status
         
-        doc["currentPosition"] = encoder1.getCount();
+        doc["currentPosition"] = get_current_position();
         doc["currentAngle"] = calculateCurrentAngle();
         doc["autoRotationEnabled"] = config.auto_rotation_enabled;
         
@@ -98,7 +193,7 @@ void setupWebServer() {
     // API endpoint for getting configuration
     webServer.on("/api/config", HTTP_GET, [](AsyncWebServerRequest *request) {
         AsyncResponseStream *response = request->beginResponseStream("application/json");
-        StaticJsonDocument<512> doc;
+        StaticJsonDocument<768> doc;  // Increased size for motion control params
         
         // Position calibration
         doc["pos_0_degrees"] = config.pos_0_degrees;
@@ -118,6 +213,16 @@ void setupWebServer() {
         
         // Rotation settings
         doc["rotation_interval"] = config.rotation_interval;
+        
+        // Motion control parameters
+        doc["position_hysteresis"] = config.position_hysteresis;
+        doc["max_speed"] = config.max_speed;
+        doc["acceleration"] = config.acceleration;
+        doc["vel_loop_p"] = config.vel_loop_p;
+        doc["vel_loop_i"] = config.vel_loop_i;
+        doc["vel_loop_d"] = config.vel_loop_d;
+        doc["vel_filter_persistence"] = config.vel_filter_persistence;
+        doc["spd_err_persistence"] = config.spd_err_persistence;
         
         serializeJson(doc, *response);
         log_i("Config API access");
@@ -181,8 +286,49 @@ void setupWebServer() {
                 config.auto_rotation_enabled = jsonObj["auto_rotation_enabled"];
             }
             
+            // Motion control parameters if present
+            if (jsonObj.containsKey("position_hysteresis")) {
+                config.position_hysteresis = jsonObj["position_hysteresis"];
+            }
+            
+            if (jsonObj.containsKey("max_speed")) {
+                config.max_speed = jsonObj["max_speed"];
+            }
+            
+            if (jsonObj.containsKey("acceleration")) {
+                config.acceleration = jsonObj["acceleration"];
+            }
+            
+            if (jsonObj.containsKey("vel_loop_p")) {
+                config.vel_loop_p = jsonObj["vel_loop_p"];
+            }
+            
+            if (jsonObj.containsKey("vel_loop_i")) {
+                config.vel_loop_i = jsonObj["vel_loop_i"];
+            }
+            
+            if (jsonObj.containsKey("vel_loop_d")) {
+                config.vel_loop_d = jsonObj["vel_loop_d"];
+            }
+            
+            if (jsonObj.containsKey("vel_filter_persistence")) {
+                config.vel_filter_persistence = jsonObj["vel_filter_persistence"];
+            }
+            
+            if (jsonObj.containsKey("spd_err_persistence")) {
+                config.spd_err_persistence = jsonObj["spd_err_persistence"];
+            }
+            
             // Save the updated configuration
             saveConfiguration();
+            
+            // Update runtime motion control parameters
+            setMotionControlConfig(config.position_hysteresis, config.max_speed, config.acceleration,
+                                  config.vel_loop_p, config.vel_loop_i, config.vel_loop_d,
+                                  config.vel_filter_persistence, config.spd_err_persistence);
+            
+            // Update calibration-based parameters
+            updateMotionControlCalibration();
             
             request->send(200, "text/plain", "Settings updated");
         }
@@ -213,19 +359,22 @@ void setupWebServer() {
         log_i("Set Zero API access");
         
         // Get current encoder position
-        int32_t currentPosition = encoder1.getCount();
+        int32_t currentPosition = get_current_position();
         
         // Calculate offset to subtract from all positions
-        int32_t offset = currentPosition;
+        int32_t offset = currentPosition - config.pos_0_degrees;
         
         // Update all calibration positions by subtracting the offset
-        config.pos_0_degrees -= offset;
-        config.pos_90_degrees -= offset;
-        config.pos_180_degrees -= offset;
-        config.pos_270_degrees -= offset;
+        config.pos_0_degrees = currentPosition;
+        config.pos_90_degrees += offset;
+        config.pos_180_degrees += offset;
+        config.pos_270_degrees += offset;
         
         // Save the updated configuration
         saveConfiguration();
+        
+        // Update calibration-based parameters
+        updateMotionControlCalibration();
         
         log_i("Zero position set. Offset applied: %d", offset);
         log_i("New positions - 0°: %d, 90°: %d, 180°: %d, 270°: %d", 
@@ -264,6 +413,9 @@ void setupWebServer() {
         resetToDefaultConfig();
         request->send(200, "text/plain", "Settings reset to defaults");
     });
+    
+    // Setup WebSocket handlers
+    setupWebSockets();
     
     // Start the web server
     webServer.begin();

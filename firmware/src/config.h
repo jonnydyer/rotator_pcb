@@ -25,6 +25,16 @@
 // Timer settings
 #define DEFAULT_ROTATION_INTERVAL 60 // seconds between auto-rotation
 
+// Motion control default values
+#define DEFAULT_POSITION_HYSTERESIS 20
+#define DEFAULT_MAX_SPEED 4000.0f
+#define DEFAULT_ACCELERATION 2000.0f
+#define DEFAULT_VEL_LOOP_P 3e-5f
+#define DEFAULT_VEL_LOOP_I 6e-3f
+#define DEFAULT_VEL_LOOP_D -2e-8f
+#define DEFAULT_VEL_FILTER_PERSISTENCE 0.2f
+#define DEFAULT_SPD_ERR_PERSISTENCE 0.2f
+
 // Configuration file path
 #define CONFIG_FILE "/config.json"
 
@@ -49,6 +59,16 @@ struct RotatorConfig {
     // Rotation settings
     uint32_t rotation_interval; // seconds
     bool auto_rotation_enabled;
+    
+    // Motion control parameters
+    uint32_t position_hysteresis;
+    float max_speed;
+    float acceleration;
+    float vel_loop_p;
+    float vel_loop_i;
+    float vel_loop_d;
+    float vel_filter_persistence;
+    float spd_err_persistence;
 };
 
 // Global configuration object

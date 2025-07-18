@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Debug WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .status {
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.connecting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-connect {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-disconnect {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-start {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-stop {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-clear {
+            background-color: #ffc107;
+            color: black;
+        }
+        button:hover {
+            opacity: 0.8;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .data-display {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .raw-data {
+            background-color: #000;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 15px;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .stat-item {
+            background-color: white;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: inline-block;
+            width: 120px;
+            font-weight: bold;
+        }
+        .input-group input {
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ESP32 Debug WebSocket Test</h1>
+        
+        <div class="controls">
+            <div class="input-group">
+                <label for="esp32-ip">ESP32 IP Address:</label>
+                <input type="text" id="esp32-ip" value="192.168.4.1" placeholder="192.168.4.1">
+            </div>
+            
+            <div class="input-group">
+                <label for="websocket-path">WebSocket Path:</label>
+                <input type="text" id="websocket-path" value="/ws/debug" placeholder="/ws/debug">
+            </div>
+            
+            <button id="connect-btn" class="btn-connect" onclick="connectWebSocket()">Connect</button>
+            <button id="disconnect-btn" class="btn-disconnect" onclick="disconnectWebSocket()" disabled>Disconnect</button>
+            <button id="start-btn" class="btn-start" onclick="startDebug()" disabled>Start Debug</button>
+            <button id="stop-btn" class="btn-stop" onclick="stopDebug()" disabled>Stop Debug</button>
+            <button id="clear-btn" class="btn-clear" onclick="clearData()">Clear Data</button>
+        </div>
+        
+        <div id="status" class="status disconnected">
+            Status: Disconnected
+        </div>
+        
+        <div class="data-display">
+            <h3>Real-time Data</h3>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-label">Messages Received</div>
+                    <div class="stat-value" id="message-count">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Current Position</div>
+                    <div class="stat-value" id="current-position">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Target Position</div>
+                    <div class="stat-value" id="target-position">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Motion Active</div>
+                    <div class="stat-value" id="motion-active">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Speed Error</div>
+                    <div class="stat-value" id="speed-error">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Error Integral</div>
+                    <div class="stat-value" id="error-integral">-</div>
+                </div>
+            </div>
+            
+            <h4>Raw WebSocket Data</h4>
+            <div id="raw-data" class="raw-data">
+                Waiting for WebSocket connection...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let websocket = null;
+        let messageCount = 0;
+        let isDebugActive = false;
+        
+        // UI Elements
+        const statusDiv = document.getElementById('status');
+        const rawDataDiv = document.getElementById('raw-data');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const messageCountSpan = document.getElementById('message-count');
+        
+        function updateStatus(message, className) {
+            statusDiv.textContent = `Status: ${message}`;
+            statusDiv.className = `status ${className}`;
+        }
+        
+        function logMessage(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            rawDataDiv.textContent += logEntry;
+            rawDataDiv.scrollTop = rawDataDiv.scrollHeight;
+        }
+        
+        function connectWebSocket() {
+            const ip = document.getElementById('esp32-ip').value;
+            const path = document.getElementById('websocket-path').value;
+            const wsUrl = `ws://${ip}${path}`;
+            
+            updateStatus('Connecting...', 'connecting');
+            logMessage(`Attempting to connect to ${wsUrl}`, 'info');
+            
+            try {
+                websocket = new WebSocket(wsUrl);
+                
+                websocket.onopen = function(event) {
+                    updateStatus('Connected', 'connected');
+                    logMessage('WebSocket connection established', 'success');
+                    
+                    // Update button states
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                };
+                
+                websocket.onmessage = function(event) {
+                    messageCount++;
+                    messageCountSpan.textContent = messageCount;
+                    
+                    logMessage(`Received: ${event.data}`, 'data');
+                    
+                    // Try to parse JSON and update stats
+                    try {
+                        const data = JSON.parse(event.data);
+                        updateStats(data);
+                    } catch (e) {
+                        logMessage(`Failed to parse JSON: ${e.message}`, 'error');
+                    }
+                };
+                
+                websocket.onclose = function(event) {
+                    updateStatus('Disconnected', 'disconnected');
+                    logMessage(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`, 'warning');
+                    
+                    // Update button states
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = true;
+                    isDebugActive = false;
+                };
+                
+                websocket.onerror = function(error) {
+                    updateStatus('Connection Error', 'disconnected');
+                    logMessage(`WebSocket error: ${error}`, 'error');
+                };
+                
+            } catch (error) {
+                updateStatus('Connection Failed', 'disconnected');
+                logMessage(`Failed to create WebSocket: ${error.message}`, 'error');
+            }
+        }
+        
+        function disconnectWebSocket() {
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
+        }
+        
+        function startDebug() {
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send('start');
+                logMessage('Sent start command', 'command');
+                isDebugActive = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+            }
+        }
+        
+        function stopDebug() {
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send('stop');
+                logMessage('Sent stop command', 'command');
+                isDebugActive = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+        
+        function clearData() {
+            rawDataDiv.textContent = '';
+            messageCount = 0;
+            messageCountSpan.textContent = '0';
+            logMessage('Data cleared', 'info');
+        }
+        
+        function updateStats(data) {
+            // Update individual stat displays
+            if (data.currentPosition !== undefined) {
+                document.getElementById('current-position').textContent = data.currentPosition;
+            }
+            if (data.targetPosition !== undefined) {
+                document.getElementById('target-position').textContent = data.targetPosition;
+            }
+            if (data.motionActive !== undefined) {
+                document.getElementById('motion-active').textContent = data.motionActive ? 'YES' : 'NO';
+            }
+            if (data.speedError !== undefined) {
+                document.getElementById('speed-error').textContent = data.speedError.toFixed(3);
+            }
+            if (data.errorIntegral !== undefined) {
+                document.getElementById('error-integral').textContent = data.errorIntegral.toFixed(3);
+            }
+        }
+        
+        // Auto-connect on page load for convenience
+        window.addEventListener('load', function() {
+            logMessage('WebSocket test page loaded', 'info');
+            logMessage('Click "Connect" to establish WebSocket connection to ESP32', 'info');
+        });
+    </script>
+</body>
+</html> 

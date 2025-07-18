@@ -9,10 +9,10 @@
 #include <DNSServer.h>
 #include <SPIFFS.h>
 #include <Update.h>
-#include <ESP32Encoder.h>
 #include "config.h"
 #include "rotator.h"
 #include "neopixel.h"
+#include "main.h"
 
 // Constants
 const int DNS_PORT = 53;
@@ -43,17 +43,19 @@ bool startWiFiAP();
 void setupCaptivePortal();
 void handleDNS();
 void setupWebServer();
+void setupWebSockets();
 void setupOTA();
 void handleWiFiEvents();
+void sendDebugData();
+void onDebugWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len);
 
 // External declarations
 extern AsyncWebServer webServer;
+extern AsyncWebSocket debugWebSocket;
 extern DNSServer dnsServer;
 extern bool otaInProgress;
+extern bool debugStreamActive;
 
 // External function declarations from rotator.h and config.h
-extern ESP32Encoder encoder1;
 extern int calculateCurrentAngle();
 extern void rotateToAngle(int angle);
-extern void resetToDefaultConfig();
-extern bool saveConfiguration(); 

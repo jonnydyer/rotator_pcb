@@ -6,6 +6,7 @@
 // Global rotator state
 volatile bool auto_rotation_active = false;
 volatile unsigned long last_rotation_time = 0;
+volatile int32_t full_revolution_count = 0;
 
 /**
  * Setup the rotator subsystem
@@ -22,16 +23,31 @@ void setupRotator() {
 }
 
 /**
+ * Calculate the minimum circular distance between two encoder positions
+ * Accounts for the circular nature of the encoder
+ */
+int32_t calculateCircularDistance(int32_t count, int32_t target_pos) {
+    // Linear distance
+    int32_t linear_dist = abs(count - target_pos);
+    
+    // Circular distance (wrapping around full revolution)
+    int32_t circular_dist = full_revolution_count - linear_dist;
+    
+    // Return the minimum distance
+    return (linear_dist <= circular_dist) ? linear_dist : circular_dist;
+}
+
+/**
  * Calculate the current angular position based on encoder count
  */
 int calculateCurrentAngle() {
-    int32_t count = encoder1.getCount();
+    int32_t count = get_current_position();
     
-    // Find the closest angle
-    int32_t dist_0 = abs(count - config.pos_0_degrees);
-    int32_t dist_90 = abs(count - config.pos_90_degrees);
-    int32_t dist_180 = abs(count - config.pos_180_degrees);
-    int32_t dist_270 = abs(count - config.pos_270_degrees);
+    // Find the closest angle using circular distance calculation
+    int32_t dist_0 = calculateCircularDistance(count, config.pos_0_degrees);
+    int32_t dist_90 = calculateCircularDistance(count, config.pos_90_degrees);
+    int32_t dist_180 = calculateCircularDistance(count, config.pos_180_degrees);
+    int32_t dist_270 = calculateCircularDistance(count, config.pos_270_degrees);
     
     if (dist_0 <= dist_90 && dist_0 <= dist_180 && dist_0 <= dist_270) {
         return 0;
@@ -71,7 +87,7 @@ void rotateToAngle(int angle) {
             return;
     }
     
-    int32_t currentPosition = encoder1.getCount();
+    int32_t currentPosition = get_current_position();
     
     // Determine the shortest path
     // Calculate full 360 revolution in encoder counts
@@ -107,7 +123,8 @@ void rotateToAngle(int angle) {
  * Should be called periodically to check if it's time to rotate
  */
 void processAutoRotation() {
-    if (!config.auto_rotation_enabled || motion_active) {
+    MotionControlInfo motionInfo = get_motion_control_info();
+    if (!config.auto_rotation_enabled || motionInfo.motion_active) {
         return;
     }
     
@@ -125,7 +142,7 @@ void processAutoRotation() {
  */
 void moveToNextPosition() {
     int currentAngle = calculateCurrentAngle();
-    int nextAngle = (currentAngle + 90) % 360;
+    int nextAngle = (currentAngle - 90 + 360) % 360;
     
     rotateToAngle(nextAngle);
 }
@@ -155,4 +172,18 @@ void setNeoPixelForAngle(int angle) {
     
     // Set the NeoPixel color
     setNeoPixelColor(color);
+}
+
+/**
+ * Update motion control calibration parameters
+ * Calculates full revolution count from calibration data
+ */
+void updateMotionControlCalibration() {
+    // Calculate full revolution from calibration data using 270° span
+    full_revolution_count = abs(config.pos_270_degrees - config.pos_0_degrees) * 4 / 3;
+    
+    // Update motion control system
+    setFullRevolutionCount(full_revolution_count);
+    
+    log_i("Motion control calibration updated - Full revolution: %d counts", full_revolution_count);
 } 

@@ -1,4 +1,6 @@
 #include "config.h"
+#include "main.h"
+#include "rotator.h"
 
 // Global configuration instance
 RotatorConfig config;
@@ -27,8 +29,26 @@ void resetToDefaultConfig() {
     config.rotation_interval = DEFAULT_ROTATION_INTERVAL;
     config.auto_rotation_enabled = false;
     
+    // Motion control parameters
+    config.position_hysteresis = DEFAULT_POSITION_HYSTERESIS;
+    config.max_speed = DEFAULT_MAX_SPEED;
+    config.acceleration = DEFAULT_ACCELERATION;
+    config.vel_loop_p = DEFAULT_VEL_LOOP_P;
+    config.vel_loop_i = DEFAULT_VEL_LOOP_I;
+    config.vel_loop_d = DEFAULT_VEL_LOOP_D;
+    config.vel_filter_persistence = DEFAULT_VEL_FILTER_PERSISTENCE;
+    config.spd_err_persistence = DEFAULT_SPD_ERR_PERSISTENCE;
+    
     // Save to file
     saveConfiguration();
+    
+    // Update runtime motion control parameters
+    setMotionControlConfig(config.position_hysteresis, config.max_speed, config.acceleration,
+                          config.vel_loop_p, config.vel_loop_i, config.vel_loop_d,
+                          config.vel_filter_persistence, config.spd_err_persistence);
+    
+    // Update calibration-based parameters
+    updateMotionControlCalibration();
 }
 
 /**
@@ -47,7 +67,7 @@ bool loadConfiguration() {
         return false;
     }
     
-    StaticJsonDocument<1024> doc;
+    StaticJsonDocument<1536> doc;
     DeserializationError error = deserializeJson(doc, file);
     file.close();
     
@@ -80,6 +100,16 @@ bool loadConfiguration() {
     config.rotation_interval = doc["rotation_interval"] | DEFAULT_ROTATION_INTERVAL;
     config.auto_rotation_enabled = doc["auto_rotation_enabled"] | false;
     
+    // Motion control parameters
+    config.position_hysteresis = doc["position_hysteresis"] | DEFAULT_POSITION_HYSTERESIS;
+    config.max_speed = doc["max_speed"] | DEFAULT_MAX_SPEED;
+    config.acceleration = doc["acceleration"] | DEFAULT_ACCELERATION;
+    config.vel_loop_p = doc["vel_loop_p"] | DEFAULT_VEL_LOOP_P;
+    config.vel_loop_i = doc["vel_loop_i"] | DEFAULT_VEL_LOOP_I;
+    config.vel_loop_d = doc["vel_loop_d"] | DEFAULT_VEL_LOOP_D;
+    config.vel_filter_persistence = doc["vel_filter_persistence"] | DEFAULT_VEL_FILTER_PERSISTENCE;
+    config.spd_err_persistence = doc["spd_err_persistence"] | DEFAULT_SPD_ERR_PERSISTENCE;
+    
     log_i("Configuration loaded successfully");
     return true;
 }
@@ -88,7 +118,7 @@ bool loadConfiguration() {
  * Save configuration to SPIFFS
  */
 bool saveConfiguration() {
-    StaticJsonDocument<1024> doc;
+    StaticJsonDocument<1536> doc;
     
     // WiFi settings
     doc["ap_ssid"] = config.ap_ssid;
@@ -109,6 +139,16 @@ bool saveConfiguration() {
     // Rotation settings
     doc["rotation_interval"] = config.rotation_interval;
     doc["auto_rotation_enabled"] = config.auto_rotation_enabled;
+    
+    // Motion control parameters
+    doc["position_hysteresis"] = config.position_hysteresis;
+    doc["max_speed"] = config.max_speed;
+    doc["acceleration"] = config.acceleration;
+    doc["vel_loop_p"] = config.vel_loop_p;
+    doc["vel_loop_i"] = config.vel_loop_i;
+    doc["vel_loop_d"] = config.vel_loop_d;
+    doc["vel_filter_persistence"] = config.vel_filter_persistence;
+    doc["spd_err_persistence"] = config.spd_err_persistence;
     
     File file = SPIFFS.open(CONFIG_FILE, "w");
     if (!file) {

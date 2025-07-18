@@ -190,6 +190,91 @@
             border-radius: 4px;
             margin-top: 10px;
         }
+        
+        /* Debug tab styles */
+        .debug-controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .debug-controls button {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .debug-status {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .plot-container {
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            overflow: hidden; /* Prevent content from overflowing */
+        }
+        
+        .plot-container h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+        
+        .plot-container canvas {
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            display: block;
+            margin: 0 auto;
+            max-width: 100%; /* Make canvas responsive */
+            height: auto; /* Maintain aspect ratio */
+        }
+        
+        .plot-legend {
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        .legend-item {
+            display: inline-block;
+            margin: 0 15px;
+            font-size: 14px;
+        }
+        
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 12px;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+        
+        /* Responsive design for smaller screens */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .plot-container canvas {
+                width: 100%;
+                height: auto;
+            }
+            
+            .legend-item {
+                display: block;
+                margin: 5px 0;
+                text-align: center;
+            }
+            
+            .debug-controls button {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -220,6 +305,8 @@
             <button class="tablinks active" onclick="openTab(event, 'control')">Control</button>
             <button class="tablinks" onclick="openTab(event, 'settings')">Settings</button>
             <button class="tablinks" onclick="openTab(event, 'calibration')">Calibration</button>
+            <button class="tablinks" onclick="openTab(event, 'motion-control')">Motion Control</button>
+            <button class="tablinks" onclick="openTab(event, 'debug')">Debug</button>
             <button class="tablinks" onclick="openTab(event, 'updates')">Updates</button>
         </div>
         
@@ -323,6 +410,102 @@
                 <input type="number" id="pos-270-degrees">
             </div>
             <button onclick="savePositionSettings()">Save Position Settings</button>
+        </div>
+        
+        <!-- Motion Control Tab -->
+        <div id="motion-control" class="tabcontent">
+            <h2>Motion Control Configuration</h2>
+            <p>Configure motion control parameters for precise positioning and smooth movement.</p>
+            
+            <div class="form-group">
+                <label for="position-hysteresis">Position Hysteresis (encoder counts)</label>
+                <input type="number" id="position-hysteresis" min="1" max="1000" step="1">
+                <small>Tolerance around target position before stopping (default: 20)</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="max-speed">Maximum Speed (counts/second)</label>
+                <input type="number" id="max-speed" min="100" max="20000" step="100">
+                <small>Maximum rotational speed (default: 6000)</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="acceleration">Acceleration (counts/second²)</label>
+                <input type="number" id="acceleration" min="100" max="20000" step="100">
+                <small>Acceleration/deceleration rate (default: 4000)</small>
+            </div>
+            
+            <h3>PID Controller Gains</h3>
+            <p>Adjust these carefully - small changes can significantly affect performance.</p>
+            
+            <div class="form-group">
+                <label for="vel-loop-p">Proportional Gain (P)</label>
+                <input type="text" id="vel-loop-p" pattern="[+-]?([0-9]*[.])?[0-9]+([eE][+-]?[0-9]+)?">
+                <small>Proportional response to speed error (default: 3e-5)</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="vel-loop-i">Integral Gain (I)</label>
+                <input type="text" id="vel-loop-i" pattern="[+-]?([0-9]*[.])?[0-9]+([eE][+-]?[0-9]+)?">
+                <small>Response to accumulated speed error (default: 6e-3)</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="vel-loop-d">Derivative Gain (D)</label>
+                <input type="text" id="vel-loop-d" pattern="[+-]?([0-9]*[.])?[0-9]+([eE][+-]?[0-9]+)?">
+                <small>Response to rate of speed error change (default: -2e-8)</small>
+            </div>
+            
+            <h3>Filter Settings</h3>
+            
+            <div class="form-group">
+                <label for="vel-filter-persistence">Velocity Filter Persistence</label>
+                <input type="number" id="vel-filter-persistence" min="0" max="1" step="0.01">
+                <small>Velocity smoothing factor, 0=no filtering, 1=maximum filtering (default: 0.0)</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="spd-err-persistence">Speed Error Persistence</label>
+                <input type="number" id="spd-err-persistence" min="0" max="1" step="0.01">
+                <small>Speed error derivative smoothing factor (default: 0.0)</small>
+            </div>
+            
+            <button onclick="saveMotionControlSettings()">Save Motion Control Settings</button>
+            <button onclick="resetMotionControlToDefaults()">Reset to Defaults</button>
+        </div>
+        
+        <!-- Debug Tab -->
+        <div id="debug" class="tabcontent">
+            <h2>Motion Control Debug</h2>
+            <div class="debug-controls">
+                <button id="debug-toggle" onclick="toggleDebug()">Start Debug</button>
+                <button id="debug-clear" onclick="clearPlots()">Clear Plots</button>
+                <div class="debug-status">
+                    Status: <span id="debug-status">Stopped</span> | 
+                    Connection: <span id="debug-connection">Disconnected</span> |
+                    Data Points: <span id="debug-points">0</span>
+                </div>
+            </div>
+            
+            <div class="plot-container">
+                <h3>Position Tracking</h3>
+                <canvas id="position-plot" width="750" height="250"></canvas>
+                <div class="plot-legend">
+                    <span class="legend-item"><span class="legend-color" style="background-color: #3498db;"></span>Current Position</span>
+                    <span class="legend-item"><span class="legend-color" style="background-color: #2ecc71;"></span>Current Velocity</span>
+                    <span class="legend-item"><span class="legend-color" style="background-color: #e74c3c;"></span>Target Position</span>
+                </div>
+            </div>
+            
+            <div class="plot-container">
+                <h3>PID Error Terms</h3>
+                <canvas id="error-plot" width="750" height="250"></canvas>
+                <div class="plot-legend">
+                    <span class="legend-item"><span class="legend-color" style="background-color: #2ecc71;"></span>Speed Error</span>
+                    <span class="legend-item"><span class="legend-color" style="background-color: #f39c12;"></span>Error Integral</span>
+                    <span class="legend-item"><span class="legend-color" style="background-color: #9b59b6;"></span>Error Derivative</span>
+                </div>
+            </div>
         </div>
         
         <!-- Updates Tab -->
@@ -491,6 +674,48 @@
                 console.log('Rotation interval element found:', rotationInterval);
                 
                 if (rotationInterval) rotationInterval.value = data.rotation_interval;
+                
+                // Motion control parameters
+                if (data.position_hysteresis !== undefined) {
+                    const posHysteresis = document.getElementById('position-hysteresis');
+                    if (posHysteresis) posHysteresis.value = data.position_hysteresis;
+                }
+                
+                if (data.max_speed !== undefined) {
+                    const maxSpeed = document.getElementById('max-speed');
+                    if (maxSpeed) maxSpeed.value = data.max_speed;
+                }
+                
+                if (data.acceleration !== undefined) {
+                    const acceleration = document.getElementById('acceleration');
+                    if (acceleration) acceleration.value = data.acceleration;
+                }
+                
+                if (data.vel_loop_p !== undefined) {
+                    const velLoopP = document.getElementById('vel-loop-p');
+                    if (velLoopP) velLoopP.value = data.vel_loop_p.toExponential();
+                }
+                
+                if (data.vel_loop_i !== undefined) {
+                    const velLoopI = document.getElementById('vel-loop-i');
+                    if (velLoopI) velLoopI.value = data.vel_loop_i.toExponential();
+                }
+                
+                if (data.vel_loop_d !== undefined) {
+                    const velLoopD = document.getElementById('vel-loop-d');
+                    if (velLoopD) velLoopD.value = data.vel_loop_d.toExponential();
+                }
+                
+                if (data.vel_filter_persistence !== undefined) {
+                    const velFilterPersistence = document.getElementById('vel-filter-persistence');
+                    if (velFilterPersistence) velFilterPersistence.value = data.vel_filter_persistence;
+                }
+                
+                if (data.spd_err_persistence !== undefined) {
+                    const spdErrPersistence = document.getElementById('spd-err-persistence');
+                    if (spdErrPersistence) spdErrPersistence.value = data.spd_err_persistence;
+                }
+                
             } catch (error) {
                 console.error('Error in updateConfigDisplay:', error);
             }
@@ -702,6 +927,85 @@
             });
         }
         
+        // Save motion control settings
+        function saveMotionControlSettings() {
+            // Get basic parameters
+            const positionHysteresis = parseInt(document.getElementById('position-hysteresis').value);
+            const maxSpeed = parseFloat(document.getElementById('max-speed').value);
+            const acceleration = parseFloat(document.getElementById('acceleration').value);
+            
+            // Get PID gains (handle scientific notation)
+            const velLoopP = parseFloat(document.getElementById('vel-loop-p').value);
+            const velLoopI = parseFloat(document.getElementById('vel-loop-i').value);
+            const velLoopD = parseFloat(document.getElementById('vel-loop-d').value);
+            
+            // Get filter settings
+            const velFilterPersistence = parseFloat(document.getElementById('vel-filter-persistence').value);
+            const spdErrPersistence = parseFloat(document.getElementById('spd-err-persistence').value);
+            
+            // Validate inputs
+            if (isNaN(positionHysteresis) || positionHysteresis < 1) {
+                alert('Position hysteresis must be a positive integer');
+                return;
+            }
+            
+            if (isNaN(maxSpeed) || maxSpeed < 100) {
+                alert('Maximum speed must be at least 100 counts/second');
+                return;
+            }
+            
+            if (isNaN(acceleration) || acceleration < 100) {
+                alert('Acceleration must be at least 100 counts/second²');
+                return;
+            }
+            
+            if (isNaN(velLoopP) || isNaN(velLoopI) || isNaN(velLoopD)) {
+                alert('All PID gains must be valid numbers (scientific notation allowed)');
+                return;
+            }
+            
+            if (isNaN(velFilterPersistence) || velFilterPersistence < 0 || velFilterPersistence > 1) {
+                alert('Velocity filter persistence must be between 0 and 1');
+                return;
+            }
+            
+            if (isNaN(spdErrPersistence) || spdErrPersistence < 0 || spdErrPersistence > 1) {
+                alert('Speed error persistence must be between 0 and 1');
+                return;
+            }
+            
+            saveSettings({
+                position_hysteresis: positionHysteresis,
+                max_speed: maxSpeed,
+                acceleration: acceleration,
+                vel_loop_p: velLoopP,
+                vel_loop_i: velLoopI,
+                vel_loop_d: velLoopD,
+                vel_filter_persistence: velFilterPersistence,
+                spd_err_persistence: spdErrPersistence
+            });
+        }
+        
+        // Reset motion control settings to defaults
+        function resetMotionControlToDefaults() {
+            if (!confirm('Reset motion control parameters to default values?')) {
+                return;
+            }
+            
+            // Set default values
+            document.getElementById('position-hysteresis').value = 20;
+            document.getElementById('max-speed').value = 6000;
+            document.getElementById('acceleration').value = 4000;
+            document.getElementById('vel-loop-p').value = '3e-5';
+            document.getElementById('vel-loop-i').value = '6e-3';
+            document.getElementById('vel-loop-d').value = '-2e-8';
+            document.getElementById('vel-filter-persistence').value = 0.0;
+            document.getElementById('spd-err-persistence').value = 0.0;
+            
+            // Save the defaults
+            saveMotionControlSettings();
+        }
+        
         // Generic settings save function
         function saveSettings(settings) {
             showLoading();
@@ -840,6 +1144,376 @@
         // Hide loading indicator
         function hideLoading() {
             document.getElementById('loading').classList.add('hidden');
+        }
+        
+        // =============================================================================
+        // DEBUG FUNCTIONALITY
+        // =============================================================================
+        
+        // Debug state variables
+        let debugActive = false;
+        let debugWebSocket = null;
+        let debugDataBuffer = [];
+        let debugTimer = null;
+        let debugStartTime = Date.now();
+        
+        // Plot configuration
+        const PLOT_BUFFER_SIZE = 1000;  // Maximum data points to keep
+        const PLOT_WINDOW_SECONDS = 100; // Seconds of data to display
+        const PLOT_UPDATE_RATE = 100;   // ms between plot updates
+        
+        // Colors for plotting
+        const PLOT_COLORS = {
+            currentPosition: '#3498db',
+            currentVelocity: '#2ecc71',
+            targetPosition: '#e74c3c',
+            speedError: '#2ecc71',
+            errorIntegral: '#f39c12',
+            errorDerivative: '#9b59b6'
+        };
+        
+        // Toggle debug on/off
+        function toggleDebug() {
+            if (debugActive) {
+                stopDebug();
+            } else {
+                startDebug();
+            }
+        }
+        
+        // Start debug data collection and plotting
+        function startDebug() {
+            debugActive = true;
+            debugStartTime = Date.now();
+            
+            // Update UI
+            document.getElementById('debug-toggle').textContent = 'Stop Debug';
+            document.getElementById('debug-status').textContent = 'Starting...';
+            
+            // Connect to WebSocket
+            connectDebugWebSocket();
+            
+            // Start plot update timer
+            debugTimer = setInterval(updatePlots, PLOT_UPDATE_RATE);
+            
+            console.log('Debug started');
+        }
+        
+        // Stop debug data collection and plotting
+        function stopDebug() {
+            debugActive = false;
+            
+            // Update UI
+            document.getElementById('debug-toggle').textContent = 'Start Debug';
+            document.getElementById('debug-status').textContent = 'Stopped';
+            document.getElementById('debug-connection').textContent = 'Disconnected';
+            
+            // Stop timers
+            if (debugTimer) {
+                clearInterval(debugTimer);
+                debugTimer = null;
+            }
+            
+            // Disconnect WebSocket
+            disconnectDebugWebSocket();
+            
+            console.log('Debug stopped');
+        }
+        
+        // Clear all plot data
+        function clearPlots() {
+            debugDataBuffer = [];
+            debugStartTime = Date.now();
+            updatePlots();
+            updateDebugStats();
+        }
+        
+        // Update debug statistics display
+        function updateDebugStats() {
+            document.getElementById('debug-points').textContent = debugDataBuffer.length;
+        }
+        
+        // =============================================================================
+        // WEBSOCKET IMPLEMENTATION
+        // =============================================================================
+        
+        function connectDebugWebSocket() {
+            try {
+                // Construct WebSocket URL
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = protocol + '//' + window.location.host + '/ws/debug';
+                
+                console.log('Connecting to WebSocket:', wsUrl);
+                document.getElementById('debug-connection').textContent = 'Connecting...';
+                
+                debugWebSocket = new WebSocket(wsUrl);
+                debugWebSocket.onopen = onDebugWebSocketOpen;
+                debugWebSocket.onmessage = onDebugWebSocketMessage;
+                debugWebSocket.onclose = onDebugWebSocketClose;
+                debugWebSocket.onerror = onDebugWebSocketError;
+                
+            } catch (error) {
+                console.error('Failed to create WebSocket:', error);
+                document.getElementById('debug-connection').textContent = 'Connection Failed';
+                document.getElementById('debug-status').textContent = 'Error';
+            }
+        }
+        
+        function disconnectDebugWebSocket() {
+            if (debugWebSocket) {
+                console.log('Disconnecting WebSocket');
+                
+                // Send stop command to backend before disconnecting
+                if (debugWebSocket.readyState === WebSocket.OPEN) {
+                    debugWebSocket.send('stop');
+                }
+                
+                debugWebSocket.close();
+                debugWebSocket = null;
+            }
+        }
+        
+        function onDebugWebSocketOpen(event) {
+            console.log('WebSocket connected');
+            document.getElementById('debug-connection').textContent = 'Connected';
+            document.getElementById('debug-status').textContent = 'Running';
+            
+            // Send start debug command to backend (plain string, not JSON)
+            if (debugWebSocket && debugWebSocket.readyState === WebSocket.OPEN) {
+                debugWebSocket.send('start');
+            }
+        }
+        
+        function onDebugWebSocketMessage(event) {
+            try {
+                const data = JSON.parse(event.data);
+                
+                // Validate required fields - all must come from backend
+                if (data.timestamp !== undefined && 
+                    data.currentPosition !== undefined && 
+                    data.targetPosition !== undefined &&
+                    data.speedError !== undefined &&
+                    data.errorIntegral !== undefined &&
+                    data.errorDerivative !== undefined) {
+                    
+                    // Use backend timestamp as-is (millis() since microcontroller boot)
+                    // Do NOT mix with Date.now() as they are different time references
+                    addDebugDataPoint(data);
+                } else {
+                    console.warn('Invalid debug data received (missing required fields):', data);
+                    console.warn('Expected fields: timestamp, currentPosition, targetPosition, speedError, errorIntegral, errorDerivative');
+                }
+                
+            } catch (error) {
+                console.error('Failed to parse WebSocket message:', error, event.data);
+            }
+        }
+        
+        function onDebugWebSocketClose(event) {
+            console.log('WebSocket disconnected:', event.code, event.reason);
+            document.getElementById('debug-connection').textContent = 'Disconnected';
+            
+            if (debugActive) {
+                // Attempt to reconnect if debug is still active
+                setTimeout(() => {
+                    if (debugActive) {
+                        console.log('Attempting to reconnect WebSocket...');
+                        connectDebugWebSocket();
+                    }
+                }, 2000);
+            }
+        }
+        
+        function onDebugWebSocketError(event) {
+            console.error('WebSocket error:', event);
+            document.getElementById('debug-connection').textContent = 'Error';
+        }
+        
+        // =============================================================================
+        // DATA MANAGEMENT
+        // =============================================================================
+        
+        // Add a new data point to the buffer
+        function addDebugDataPoint(dataPoint) {
+            debugDataBuffer.push(dataPoint);
+            
+            // Limit buffer size
+            if (debugDataBuffer.length > PLOT_BUFFER_SIZE) {
+                debugDataBuffer.shift();
+            }
+            
+            updateDebugStats();
+        }
+        
+        // Get data points within the display window
+        function getDisplayData() {
+            if (debugDataBuffer.length === 0) return [];
+            
+            // Use the most recent data point's timestamp as reference
+            // (backend sends millis() since boot, not Unix timestamp)
+            const mostRecentTimestamp = debugDataBuffer[debugDataBuffer.length - 1].timestamp;
+            const windowStart = mostRecentTimestamp - (PLOT_WINDOW_SECONDS * 1000);
+            
+            return debugDataBuffer.filter(point => point.timestamp >= windowStart);
+        }
+        
+        // =============================================================================
+        // PLOTTING FUNCTIONS
+        // =============================================================================
+        
+        // Update both plots
+        function updatePlots() {
+            updatePositionPlot();
+            updateErrorPlot();
+        }
+        
+        // Update the position tracking plot
+        function updatePositionPlot() {
+            const canvas = document.getElementById('position-plot');
+            const ctx = canvas.getContext('2d');
+            const data = getDisplayData();
+            
+            if (data.length === 0) {
+                clearCanvas(ctx, canvas);
+                return;
+            }
+            
+            // Clear canvas
+            clearCanvas(ctx, canvas);
+            
+            // Draw grid
+            drawGrid(ctx, canvas);
+            
+            // Calculate scales using backend timestamps (millis() since boot)
+            const timeRange = PLOT_WINDOW_SECONDS * 1000;
+            const mostRecentTimestamp = data[data.length - 1].timestamp;
+            const timeStart = mostRecentTimestamp - timeRange;
+            
+            const positions = data.flatMap(d => [d.currentPosition, d.targetPosition]);
+            const posMin = Math.min(...positions);
+            const posMax = Math.max(...positions);
+            const posRange = posMax - posMin || 100;
+            const posMargin = posRange * 0.1;
+            
+            // Draw position lines
+            drawLine(ctx, canvas, data, 'currentPosition', PLOT_COLORS.currentPosition, 
+                    timeStart, timeRange, posMin - posMargin, posRange + 2 * posMargin);
+            drawLine(ctx, canvas, data, 'currentVelocity', PLOT_COLORS.currentVelocity, 
+                    timeStart, timeRange, posMin - posMargin, posRange + 2 * posMargin);
+            drawLine(ctx, canvas, data, 'targetPosition', PLOT_COLORS.targetPosition, 
+                    timeStart, timeRange, posMin - posMargin, posRange + 2 * posMargin);
+            
+            // Draw axis labels
+            drawAxisLabels(ctx, canvas, 'Time (s)', 'Position (counts)');
+        }
+        
+        // Update the error terms plot
+        function updateErrorPlot() {
+            const canvas = document.getElementById('error-plot');
+            const ctx = canvas.getContext('2d');
+            const data = getDisplayData();
+            
+            if (data.length === 0) {
+                clearCanvas(ctx, canvas);
+                return;
+            }
+            
+            // Clear canvas
+            clearCanvas(ctx, canvas);
+            
+            // Draw grid
+            drawGrid(ctx, canvas);
+            
+            // Calculate scales using backend timestamps (millis() since boot)
+            const timeRange = PLOT_WINDOW_SECONDS * 1000;
+            const mostRecentTimestamp = data[data.length - 1].timestamp;
+            const timeStart = mostRecentTimestamp - timeRange;
+            
+            const errors = data.flatMap(d => [d.speedError, d.errorIntegral, d.errorDerivative]);
+            const errorMin = Math.min(...errors);
+            const errorMax = Math.max(...errors);
+            const errorRange = errorMax - errorMin || 1;
+            const errorMargin = errorRange * 0.1;
+            
+            // Draw error lines
+            drawLine(ctx, canvas, data, 'speedError', PLOT_COLORS.speedError, 
+                    timeStart, timeRange, errorMin - errorMargin, errorRange + 2 * errorMargin);
+            drawLine(ctx, canvas, data, 'errorIntegral', PLOT_COLORS.errorIntegral, 
+                    timeStart, timeRange, errorMin - errorMargin, errorRange + 2 * errorMargin);
+            drawLine(ctx, canvas, data, 'errorDerivative', PLOT_COLORS.errorDerivative, 
+                    timeStart, timeRange, errorMin - errorMargin, errorRange + 2 * errorMargin);
+            
+            // Draw axis labels
+            drawAxisLabels(ctx, canvas, 'Time (s)', 'Error Terms');
+        }
+        
+        // Clear canvas with white background
+        function clearCanvas(ctx, canvas) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        // Draw grid lines
+        function drawGrid(ctx, canvas) {
+            ctx.strokeStyle = '#f0f0f0';
+            ctx.lineWidth = 1;
+            
+            // Vertical grid lines
+            for (let x = 0; x <= canvas.width; x += canvas.width / 10) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            // Horizontal grid lines
+            for (let y = 0; y <= canvas.height; y += canvas.height / 6) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+        
+        // Draw a data line
+        function drawLine(ctx, canvas, data, property, color, timeStart, timeRange, valueMin, valueRange) {
+            if (data.length < 2) return;
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            let firstPoint = true;
+            for (const point of data) {
+                const x = ((point.timestamp - timeStart) / timeRange) * canvas.width;
+                const y = canvas.height - (((point[property] - valueMin) / valueRange) * canvas.height);
+                
+                if (firstPoint) {
+                    ctx.moveTo(x, y);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+        
+        // Draw axis labels
+        function drawAxisLabels(ctx, canvas, xLabel, yLabel) {
+            ctx.fillStyle = '#666';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            
+            // X-axis label
+            ctx.fillText(xLabel, canvas.width / 2, canvas.height - 5);
+            
+            // Y-axis label (rotated)
+            ctx.save();
+            ctx.translate(15, canvas.height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText(yLabel, 0, 0);
+            ctx.restore();
         }
     </script>
 </body>
