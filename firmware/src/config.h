@@ -9,6 +9,13 @@
 #define DEFAULT_AP_SSID "RotatorAP"
 #define DEFAULT_AP_PASSWORD "rotator1234"
 
+// Default WiFi client settings
+#define DEFAULT_WIFI_SSID ""
+#define DEFAULT_WIFI_PASSWORD ""
+#define DEFAULT_WIFI_CLIENT_ENABLED false
+#define DEFAULT_WIFI_CONNECTION_TIMEOUT 5 // seconds
+#define DEFAULT_MDNS_NAME "" // Will be set to "rotator-XXXX" where XXXX is last 4 MAC digits
+
 // Motor positions in encoder counts
 
 #define POS_0_DEGREES 0
@@ -40,9 +47,16 @@
 
 // Structure to hold all configuration data
 struct RotatorConfig {
-    // WiFi settings
+    // WiFi AP settings
     char ap_ssid[32];
     char ap_password[64];
+    
+    // WiFi client settings
+    char wifi_ssid[32];
+    char wifi_password[64];
+    bool wifi_client_enabled;
+    uint32_t wifi_connection_timeout; // seconds
+    char mdns_name[32]; // mDNS hostname
     
     // Motor position calibration (encoder counts)
     int32_t pos_0_degrees;
@@ -78,5 +92,6 @@ extern RotatorConfig config;
 bool loadConfiguration();
 bool saveConfiguration();
 void resetToDefaultConfig();
+void generateMDNSName();
 
 #endif // CONFIG_H 

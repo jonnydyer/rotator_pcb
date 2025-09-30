@@ -10,6 +10,16 @@
 #define AUTO_ROTATION_CHECK_INTERVAL_MS 1000
 #define DEBUG_SEND_INTERVAL_MS 100       // 10Hz debug data streaming
 
+// System state enumeration
+enum SystemState {
+    SYSTEM_BOOTING,           // Very fast blink during startup
+    SYSTEM_WIFI_AP_MODE,      // Fast blink - looking for connection
+    SYSTEM_WIFI_CONNECTING,   // Medium blink - attempting connection
+    SYSTEM_WIFI_CONNECTED,    // Slow blink - connected and ready
+    SYSTEM_WIFI_FAILED,       // Very fast blink - connection failed
+    SYSTEM_ERROR,             // Solid on - system error
+};
+
 // Structure for motion control information
 struct MotionControlInfo {
     bool motion_active;
@@ -36,5 +46,10 @@ void setFullRevolutionCount(int32_t full_revolution);
 
 // Function prototypes
 void move_to_position(int32_t target_position);
+
+// LED control functions
+void setLEDBlinkRate(uint32_t interval_ms);
+void updateLEDStatus();
+SystemState determineSystemState();
 
 #endif

@@ -1,6 +1,7 @@
 #include "config.h"
 #include "main.h"
 #include "rotator.h"
+#include <WiFi.h>
 
 // Global configuration instance
 RotatorConfig config;
@@ -9,9 +10,18 @@ RotatorConfig config;
  * Reset configuration to factory defaults
  */
 void resetToDefaultConfig() {
-    // WiFi settings
+    // WiFi AP settings
     strncpy(config.ap_ssid, DEFAULT_AP_SSID, sizeof(config.ap_ssid));
     strncpy(config.ap_password, DEFAULT_AP_PASSWORD, sizeof(config.ap_password));
+    
+    // WiFi client settings
+    strncpy(config.wifi_ssid, DEFAULT_WIFI_SSID, sizeof(config.wifi_ssid));
+    strncpy(config.wifi_password, DEFAULT_WIFI_PASSWORD, sizeof(config.wifi_password));
+    config.wifi_client_enabled = DEFAULT_WIFI_CLIENT_ENABLED;
+    config.wifi_connection_timeout = DEFAULT_WIFI_CONNECTION_TIMEOUT;
+    
+    // Generate mDNS name from MAC address
+    generateMDNSName();
     
     // Motor positions
     config.pos_0_degrees = POS_0_DEGREES;
@@ -76,13 +86,31 @@ bool loadConfiguration() {
         return false;
     }
     
-    // WiFi settings
+    // WiFi AP settings
     strlcpy(config.ap_ssid, 
             doc["ap_ssid"] | DEFAULT_AP_SSID, 
             sizeof(config.ap_ssid));
     strlcpy(config.ap_password, 
             doc["ap_password"] | DEFAULT_AP_PASSWORD, 
             sizeof(config.ap_password));
+    
+    // WiFi client settings
+    strlcpy(config.wifi_ssid, 
+            doc["wifi_ssid"] | DEFAULT_WIFI_SSID, 
+            sizeof(config.wifi_ssid));
+    strlcpy(config.wifi_password, 
+            doc["wifi_password"] | DEFAULT_WIFI_PASSWORD, 
+            sizeof(config.wifi_password));
+    config.wifi_client_enabled = doc["wifi_client_enabled"] | DEFAULT_WIFI_CLIENT_ENABLED;
+    config.wifi_connection_timeout = doc["wifi_connection_timeout"] | DEFAULT_WIFI_CONNECTION_TIMEOUT;
+    
+    // mDNS name - generate if not set or empty
+    const char* saved_mdns = doc["mdns_name"];
+    if (saved_mdns && strlen(saved_mdns) > 0) {
+        strlcpy(config.mdns_name, saved_mdns, sizeof(config.mdns_name));
+    } else {
+        generateMDNSName();
+    }
     
     // Motor positions
     config.pos_0_degrees = doc["pos_0_degrees"] | POS_0_DEGREES;
@@ -120,9 +148,16 @@ bool loadConfiguration() {
 bool saveConfiguration() {
     StaticJsonDocument<1536> doc;
     
-    // WiFi settings
+    // WiFi AP settings
     doc["ap_ssid"] = config.ap_ssid;
     doc["ap_password"] = config.ap_password;
+    
+    // WiFi client settings
+    doc["wifi_ssid"] = config.wifi_ssid;
+    doc["wifi_password"] = config.wifi_password;
+    doc["wifi_client_enabled"] = config.wifi_client_enabled;
+    doc["wifi_connection_timeout"] = config.wifi_connection_timeout;
+    doc["mdns_name"] = config.mdns_name;
     
     // Motor positions
     doc["pos_0_degrees"] = config.pos_0_degrees;
@@ -165,4 +200,19 @@ bool saveConfiguration() {
     file.close();
     log_i("Configuration saved successfully");
     return true;
+}
+
+/**
+ * Generate mDNS name from MAC address
+ * Format: "rotator-XXXX" where XXXX is the last 4 hex digits of MAC
+ */
+void generateMDNSName() {
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    
+    // Get last 4 bytes of MAC address
+    snprintf(config.mdns_name, sizeof(config.mdns_name), 
+             "rotator-%02X%02X", mac[4], mac[5]);
+    
+    log_i("Generated mDNS name: %s", config.mdns_name);
 } 

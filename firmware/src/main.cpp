@@ -114,7 +114,7 @@ void setup() {
   setupRotator();
   
   // Start WiFi and web server
-  startWiFiAP();
+  initializeWiFi();
   setupCaptivePortal();
   setupWebServer();
   setupOTA();
@@ -214,6 +214,9 @@ void setup_timers() {
 void loop() {
   // Process DNS requests for captive portal
   handleDNS();
+  
+  // Central LED state management
+  updateLEDStatus();
   
   // Main loop is now mostly empty as the work is done by timers and async handlers
   delay(10); // Short delay to prevent watchdog timeouts
@@ -568,4 +571,80 @@ MotionControlInfo get_motion_control_info() {
   info.speed_error_derivative = debug_speed_error_derivative;
   info.velocity = encoder_velocity;
   return info;
+}
+
+/**
+ * Set LED blink rate based on system state
+ * @param interval_ms Blink interval in milliseconds (0 = solid on, -1 = solid off)
+ */
+void setLEDBlinkRate(uint32_t interval_ms) {
+  esp_timer_stop(led_timer);
+  if (interval_ms > 0) {
+    esp_timer_start_periodic(led_timer, interval_ms * 1000); // Convert to microseconds
+  } else if (interval_ms == 0) {
+    digitalWrite(USER_LED_PIN, HIGH); // Solid on
+  } else {
+    digitalWrite(USER_LED_PIN, LOW);  // Solid off
+  }
+}
+
+/**
+ * Update LED status based on current system state
+ */
+void updateLEDStatus() {
+  static SystemState lastState = SYSTEM_BOOTING;
+  SystemState currentState = determineSystemState();
+  
+  // Only update LED if state changed
+  if (currentState != lastState) {
+    switch (currentState) {
+      case SYSTEM_BOOTING:
+        setLEDBlinkRate(100); // Very fast blink
+        break;
+      case SYSTEM_WIFI_AP_MODE:
+        setLEDBlinkRate(200); // Fast blink
+        break;
+      case SYSTEM_WIFI_CONNECTING:
+        setLEDBlinkRate(500); // Medium blink
+        break;
+      case SYSTEM_WIFI_CONNECTED:
+        setLEDBlinkRate(1000); // Slow blink
+        break;
+      case SYSTEM_WIFI_FAILED:
+        setLEDBlinkRate(150); // Very fast blink
+        break;
+      case SYSTEM_ERROR:
+        setLEDBlinkRate(0); // Solid on
+        break;
+    }
+    lastState = currentState;
+    log_i("LED state changed to: %d", currentState);
+  }
+}
+
+/**
+ * Determine current system state based on various system conditions
+ */
+SystemState determineSystemState() {
+  // Check WiFi status using the WiFi management system
+  WiFiState wifiState = getWiFiState();
+  
+  switch (wifiState) {
+    case WIFI_CONNECTED_CLIENT:
+      return SYSTEM_WIFI_CONNECTED;
+    case WIFI_CONNECTING_CLIENT:
+      return SYSTEM_WIFI_CONNECTING;
+    case WIFI_CONNECTED_AP:
+      return SYSTEM_WIFI_AP_MODE;
+    case WIFI_CONNECTING_AP:
+      return SYSTEM_WIFI_AP_MODE; // Show AP mode while starting
+    case WIFI_CONNECTION_FAILED:
+      return SYSTEM_WIFI_FAILED;
+    case WIFI_DISCONNECTED:
+    default:
+      return SYSTEM_ERROR;
+  }
+  
+  // Add other system state checks here in the future
+  // e.g., motion control status, error conditions, etc.
 }

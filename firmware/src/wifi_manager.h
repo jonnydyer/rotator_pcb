@@ -38,6 +38,15 @@ enum WiFiMode {
     STA_MODE
 };
 
+enum WiFiState {
+    WIFI_DISCONNECTED,
+    WIFI_CONNECTING_CLIENT,
+    WIFI_CONNECTED_CLIENT,
+    WIFI_CONNECTING_AP,
+    WIFI_CONNECTED_AP,
+    WIFI_CONNECTION_FAILED
+};
+
 // Function declarations
 bool startWiFiAP();
 void setupCaptivePortal();
@@ -49,12 +58,23 @@ void handleWiFiEvents();
 void sendDebugData();
 void onDebugWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len);
 
+// WiFi management functions
+bool initializeWiFi();
+bool startWiFiClient();
+bool testWiFiConnection(const char* ssid, const char* password);
+void switchToAPMode();
+void switchToClientMode();
+void startMDNS();
+WiFiState getWiFiState();
+String getWiFiStatus();
+
 // External declarations
 extern AsyncWebServer webServer;
 extern AsyncWebSocket debugWebSocket;
 extern DNSServer dnsServer;
 extern bool otaInProgress;
 extern bool debugStreamActive;
+extern WiFiState currentWiFiState;
 
 // External function declarations from rotator.h and config.h
 extern int calculateCurrentAngle();

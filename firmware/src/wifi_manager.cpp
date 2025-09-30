@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 #include "main.h"
 #include "web_ui.h"  // Include the compiled HTML
+#include "ESPmDNS.h"
 
 // Global web server instance
 AsyncWebServer webServer(80);
@@ -14,6 +15,9 @@ bool otaInProgress = false;
 bool debugStreamActive = false;
 unsigned long lastDebugSend = 0;
 
+// WiFi state management
+WiFiState currentWiFiState = WIFI_DISCONNECTED;
+
 /**
  * Start WiFi in Access Point mode
  */
@@ -24,6 +28,10 @@ bool startWiFiAP() {
     if (WiFi.softAP(config.ap_ssid, config.ap_password)) {
         log_i("AP started successfully");
         log_i("AP IP address: %s", WiFi.softAPIP().toString().c_str());
+        
+        // Start mDNS
+        startMDNS();
+        
         return true;
     } else {
         log_e("Failed to start AP");
@@ -210,6 +218,7 @@ void setupWebServer() {
         // WiFi settings
         doc["ap_ssid"] = config.ap_ssid;
         doc["ap_password"] = config.ap_password;
+        doc["mdns_name"] = config.mdns_name;
         
         // Rotation settings
         doc["rotation_interval"] = config.rotation_interval;
@@ -241,6 +250,10 @@ void setupWebServer() {
             
             if (jsonObj.containsKey("ap_password")) {
                 strlcpy(config.ap_password, jsonObj["ap_password"], sizeof(config.ap_password));
+            }
+            
+            if (jsonObj.containsKey("mdns_name")) {
+                strlcpy(config.mdns_name, jsonObj["mdns_name"], sizeof(config.mdns_name));
             }
             
             // Position calibration if present
@@ -414,6 +427,149 @@ void setupWebServer() {
         request->send(200, "text/plain", "Settings reset to defaults");
     });
     
+    // WiFi management API endpoints
+    // Scan for available networks
+    webServer.on("/api/wifi/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
+        log_i("WiFi scan API access");
+        
+        // Check if scan is already running
+        if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) {
+            request->send(409, "text/plain", "Scan already in progress");
+            return;
+        }
+        
+        // Start async scan
+        WiFi.scanNetworks(true);
+        
+        // Return immediately with scan started message
+        request->send(202, "text/plain", "Scan started");
+    });
+    
+    // Get scan results
+    webServer.on("/api/wifi/scan-results", HTTP_GET, [](AsyncWebServerRequest *request) {
+        log_i("WiFi scan results API access");
+        
+        int n = WiFi.scanComplete();
+        
+        if (n == WIFI_SCAN_RUNNING) {
+            request->send(202, "text/plain", "Scan in progress");
+            return;
+        }
+        
+        if (n == WIFI_SCAN_FAILED) {
+            request->send(500, "text/plain", "Scan failed");
+            return;
+        }
+        
+        AsyncResponseStream *response = request->beginResponseStream("application/json");
+        StaticJsonDocument<2048> doc;
+        JsonArray networks = doc.createNestedArray("networks");
+        
+        if (n > 0) {
+            for (int i = 0; i < n; i++) {
+                JsonObject network = networks.createNestedObject();
+                network["ssid"] = WiFi.SSID(i);
+                network["rssi"] = WiFi.RSSI(i);
+                network["encryption"] = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "Open" : "Secured";
+            }
+        }
+        
+        serializeJson(doc, *response);
+        request->send(response);
+    });
+    
+    // Test WiFi connection
+    webServer.on("/api/wifi/test", HTTP_POST, [](AsyncWebServerRequest *request) {
+        log_i("WiFi test API access");
+        
+        if (!request->hasParam("ssid", true) || !request->hasParam("password", true)) {
+            request->send(400, "text/plain", "Missing ssid or password parameter");
+            return;
+        }
+        
+        String ssid = request->getParam("ssid", true)->value();
+        String password = request->getParam("password", true)->value();
+        
+        if (testWiFiConnection(ssid.c_str(), password.c_str())) {
+            request->send(200, "text/plain", "Connection test successful");
+        } else {
+            request->send(400, "text/plain", "Connection test failed");
+        }
+    });
+    
+    // Connect to WiFi and save credentials
+    webServer.on("/api/wifi/connect", HTTP_POST, [](AsyncWebServerRequest *request) {
+        log_i("WiFi connect API access");
+        
+        if (!request->hasParam("ssid", true) || !request->hasParam("password", true)) {
+            request->send(400, "text/plain", "Missing ssid or password parameter");
+            return;
+        }
+        
+        String ssid = request->getParam("ssid", true)->value();
+        String password = request->getParam("password", true)->value();
+        
+        // Test connection first
+        if (!testWiFiConnection(ssid.c_str(), password.c_str())) {
+            request->send(400, "text/plain", "Connection test failed");
+            return;
+        }
+        
+        // Save credentials
+        strlcpy(config.wifi_ssid, ssid.c_str(), sizeof(config.wifi_ssid));
+        strlcpy(config.wifi_password, password.c_str(), sizeof(config.wifi_password));
+        config.wifi_client_enabled = true;
+        
+        // Save configuration
+        if (saveConfiguration()) {
+            request->send(200, "text/plain", "WiFi credentials saved successfully");
+        } else {
+            request->send(500, "text/plain", "Failed to save configuration");
+        }
+    });
+    
+    // Disconnect and clear WiFi credentials
+    webServer.on("/api/wifi/disconnect", HTTP_POST, [](AsyncWebServerRequest *request) {
+        log_i("WiFi disconnect API access");
+        
+        // Clear credentials
+        strlcpy(config.wifi_ssid, "", sizeof(config.wifi_ssid));
+        strlcpy(config.wifi_password, "", sizeof(config.wifi_password));
+        config.wifi_client_enabled = false;
+        
+        // Save configuration
+        if (saveConfiguration()) {
+            // Switch to AP mode
+            switchToAPMode();
+            request->send(200, "text/plain", "WiFi disconnected and credentials cleared");
+        } else {
+            request->send(500, "text/plain", "Failed to save configuration");
+        }
+    });
+    
+    // Get WiFi status
+    webServer.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+        log_i("WiFi status API access");
+        
+        AsyncResponseStream *response = request->beginResponseStream("application/json");
+        StaticJsonDocument<256> doc;
+        
+        doc["state"] = (int)getWiFiState();
+        doc["status"] = getWiFiStatus();
+        doc["ssid"] = config.wifi_ssid;
+        doc["client_enabled"] = config.wifi_client_enabled;
+        doc["mdns_name"] = config.mdns_name;
+        
+        if (WiFi.getMode() == WIFI_STA && WiFi.status() == WL_CONNECTED) {
+            doc["ip"] = WiFi.localIP().toString();
+        } else if (WiFi.getMode() == WIFI_AP) {
+            doc["ip"] = WiFi.softAPIP().toString();
+        }
+        
+        serializeJson(doc, *response);
+        request->send(response);
+    });
+    
     // Setup WebSocket handlers
     setupWebSockets();
     
@@ -473,4 +629,187 @@ void setupOTA() {
     );
     
     log_i("OTA update handler setup complete");
+}
+
+/**
+ * Initialize WiFi based on configuration
+ * Attempts client connection first, falls back to AP mode
+ */
+bool initializeWiFi() {
+    // Check if client mode is enabled and credentials exist
+    if (config.wifi_client_enabled && strlen(config.wifi_ssid) > 0) {
+        log_i("Attempting WiFi client connection to: %s", config.wifi_ssid);
+        currentWiFiState = WIFI_CONNECTING_CLIENT;
+        
+        if (startWiFiClient()) {
+            currentWiFiState = WIFI_CONNECTED_CLIENT;
+            log_i("WiFi client connected successfully");
+            return true;
+        } else {
+            currentWiFiState = WIFI_CONNECTION_FAILED;
+            log_w("WiFi client connection failed, falling back to AP mode");
+        }
+    }
+    
+    // Fall back to AP mode
+    log_i("Starting WiFi in AP mode");
+    currentWiFiState = WIFI_CONNECTING_AP;
+    
+    if (startWiFiAP()) {
+        currentWiFiState = WIFI_CONNECTED_AP;
+        log_i("WiFi AP started successfully");
+        return true;
+    } else {
+        currentWiFiState = WIFI_CONNECTION_FAILED;
+        log_e("Failed to start WiFi AP");
+        return false;
+    }
+}
+
+/**
+ * Start WiFi in client mode
+ */
+bool startWiFiClient() {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(config.wifi_ssid, config.wifi_password);
+    
+    // Wait for connection with timeout
+    unsigned long startTime = millis();
+    unsigned long timeout = config.wifi_connection_timeout * 1000; // Convert to milliseconds
+    
+    while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < timeout) {
+        delay(500);
+        log_d("Connecting to WiFi...");
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        log_i("WiFi client connected to: %s", config.wifi_ssid);
+        log_i("IP address: %s", WiFi.localIP().toString().c_str());
+        
+        // Start mDNS
+        startMDNS();
+        
+        return true;
+    } else {
+        log_e("WiFi client connection failed");
+        WiFi.disconnect();
+        return false;
+    }
+}
+
+
+/**
+ * Test WiFi connection with given credentials
+ */
+bool testWiFiConnection(const char* ssid, const char* password) {
+    log_i("Testing WiFi connection to: %s", ssid);
+    
+    // Save current mode
+    WiFiMode_t currentMode = WiFi.getMode();
+    
+    // Switch to STA mode for testing
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(ssid, password);
+    
+    // Wait for connection with shorter timeout for testing
+    unsigned long startTime = millis();
+    unsigned long timeout = config.wifi_connection_timeout * 1000; 
+    
+    while (WiFi.status() != WL_CONNECTED && (millis() - startTime) < timeout) {
+        delay(500);
+    }
+    
+    bool connected = (WiFi.status() == WL_CONNECTED);
+    
+    if (connected) {
+        log_i("WiFi test connection successful");
+        WiFi.disconnect();
+    } else {
+        log_w("WiFi test connection failed");
+    }
+    
+    // Restore previous mode
+    WiFi.mode(currentMode);
+    
+    return connected;
+}
+
+/**
+ * Switch to AP mode
+ */
+void switchToAPMode() {
+    log_i("Switching to AP mode");
+    WiFi.disconnect();
+    delay(100);
+    
+    if (startWiFiAP()) {
+        currentWiFiState = WIFI_CONNECTED_AP;
+        setupCaptivePortal();
+        log_i("Switched to AP mode successfully");
+    } else {
+        currentWiFiState = WIFI_CONNECTION_FAILED;
+        log_e("Failed to switch to AP mode");
+    }
+}
+
+/**
+ * Switch to client mode
+ */
+void switchToClientMode() {
+    log_i("Switching to client mode");
+    
+    if (startWiFiClient()) {
+        currentWiFiState = WIFI_CONNECTED_CLIENT;
+        log_i("Switched to client mode successfully");
+    } else {
+        currentWiFiState = WIFI_CONNECTION_FAILED;
+        log_e("Failed to switch to client mode");
+        // Fall back to AP mode
+        switchToAPMode();
+    }
+}
+
+/**
+ * Start mDNS service
+ */
+void startMDNS() {
+    if (MDNS.begin(config.mdns_name)) {
+        log_i("mDNS responder started with hostname: %s.local", config.mdns_name);
+        
+        // Add HTTP service
+        MDNS.addService("http", "tcp", 80);
+        MDNS.addServiceTxt("http", "tcp", "device", "rotator");
+        MDNS.addServiceTxt("http", "tcp", "version", "1.0");
+    } else {
+        log_e("Error setting up mDNS responder");
+    }
+}
+
+/**
+ * Get current WiFi state
+ */
+WiFiState getWiFiState() {
+    return currentWiFiState;
+}
+
+/**
+ * Get WiFi status string for display
+ */
+String getWiFiStatus() {
+    switch (currentWiFiState) {
+        case WIFI_DISCONNECTED:
+            return "Disconnected";
+        case WIFI_CONNECTING_CLIENT:
+            return "Connecting to WiFi...";
+        case WIFI_CONNECTED_CLIENT:
+            return "Connected to " + String(config.wifi_ssid) + " (" + WiFi.localIP().toString() + ")";
+        case WIFI_CONNECTING_AP:
+            return "Starting AP...";
+        case WIFI_CONNECTED_AP:
+            return "AP Mode (" + WiFi.softAPIP().toString() + ")";
+        case WIFI_CONNECTION_FAILED:
+            return "Connection Failed";
+        default:
+            return "Unknown";
+    }
 }

@@ -279,7 +279,7 @@
 </head>
 <body>
     <header>
-        <h1>Rotator Control v1.0</h1>
+        <h1>Rotator Control v1.1</h1>
     </header>
     
     <div class="container">
@@ -303,6 +303,7 @@
         
         <div class="tab">
             <button class="tablinks active" onclick="openTab(event, 'control')">Control</button>
+            <button class="tablinks" onclick="openTab(event, 'wifi')">WiFi</button>
             <button class="tablinks" onclick="openTab(event, 'settings')">Settings</button>
             <button class="tablinks" onclick="openTab(event, 'calibration')">Calibration</button>
             <button class="tablinks" onclick="openTab(event, 'motion-control')">Motion Control</button>
@@ -331,6 +332,64 @@
                 <label for="rotation-interval">Rotation Interval (seconds)</label>
                 <input type="number" id="rotation-interval" min="5" value="60">
                 <button onclick="saveRotationInterval()">Save</button>
+            </div>
+        </div>
+        
+        <!-- WiFi Tab -->
+        <div id="wifi" class="tabcontent">
+            <h2>WiFi Configuration</h2>
+            
+            <div class="card">
+                <h3>Current Connection Status</h3>
+                <div class="status">
+                    <div class="status-item">
+                        <div>Status</div>
+                        <div class="status-value" id="wifi-status">-</div>
+                    </div>
+                    <div class="status-item">
+                        <div>IP Address</div>
+                        <div class="status-value" id="wifi-ip">-</div>
+                    </div>
+                    <div class="status-item">
+                        <div>mDNS Name</div>
+                        <div class="status-value" id="wifi-mdns">-</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Connect to WiFi Network</h3>
+                <p>Scan for available networks and connect to your WiFi router.</p>
+                
+                <div class="form-group">
+                    <button onclick="scanNetworks()" id="scan-button">Scan for Networks</button>
+                    <div id="scan-status" class="hidden"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="wifi-network-select">Select Network</label>
+                    <select id="wifi-network-select" onchange="onNetworkSelect()">
+                        <option value="">Select a network...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="wifi-password">Password</label>
+                    <input type="password" id="wifi-password" placeholder="Enter WiFi password">
+                </div>
+                
+                <div class="action-buttons">
+                    <button onclick="testConnection()" id="test-button" disabled>Test Connection</button>
+                    <button onclick="saveConnection()" id="save-button" disabled>Save & Connect</button>
+                </div>
+                
+                <div id="wifi-message" class="hidden"></div>
+            </div>
+            
+            <div class="card">
+                <h3>Current WiFi Settings</h3>
+                <p>Network: <span id="current-wifi-ssid">None</span></p>
+                <button onclick="disconnectWiFi()" id="disconnect-button" disabled>Disconnect & Clear</button>
             </div>
         </div>
         
@@ -540,6 +599,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             fetchStatus();
             fetchConfig();  // Load config once at startup
+            fetchWiFiStatus(); // Load WiFi status
             
             // Setup color picker previews
             document.getElementById('color-0').addEventListener('input', function() {
@@ -577,13 +637,21 @@
             // Refresh status when showing certain tabs
             if (tabName === 'calibration') {
                 fetchStatus();
+            } else if (tabName === 'wifi') {
+                fetchWiFiStatus();
             }
         }
         
         // Fetch current status from the device
         function fetchStatus() {
             fetch('/api/status')
-                .then(response => response.json())
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    } else {
+                        throw new Error('Failed to fetch status');
+                    }
+                })
                 .then(data => {
                     currentStatus = data;
                     updateStatusDisplay(data);
@@ -595,7 +663,13 @@
         function fetchConfig() {
             console.log('Fetching config...');
             fetch('/api/config')
-                .then(response => response.json())
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    } else {
+                        throw new Error('Failed to fetch config');
+                    }
+                })
                 .then(data => {
                     console.log('Config data received:', data);
                     configData = data;
@@ -1128,6 +1202,8 @@
                         // Restart status updates
                         statusUpdateInterval = setInterval(fetchStatus, 2000);
                         fetchStatus();
+                    } else {
+                        throw new Error('Device not ready');
                     }
                 })
                 .catch(error => {
@@ -1144,6 +1220,285 @@
         // Hide loading indicator
         function hideLoading() {
             document.getElementById('loading').classList.add('hidden');
+        }
+        
+        // =============================================================================
+        // WIFI FUNCTIONALITY
+        // =============================================================================
+        
+        // Fetch WiFi status
+        function fetchWiFiStatus() {
+            fetch('/api/wifi/status')
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    } else {
+                        throw new Error('Failed to fetch WiFi status');
+                    }
+                })
+                .then(data => {
+                    updateWiFiStatusDisplay(data);
+                })
+                .catch(error => console.error('Error fetching WiFi status:', error));
+        }
+        
+        // Update WiFi status display
+        function updateWiFiStatusDisplay(data) {
+            document.getElementById('wifi-status').textContent = data.status || '-';
+            document.getElementById('wifi-ip').textContent = data.ip || '-';
+            document.getElementById('current-wifi-ssid').textContent = data.ssid || 'None';
+            document.getElementById('wifi-mdns').textContent = data.mdns_name ? `${data.mdns_name}.local` : '-';
+            
+            // Enable/disable disconnect button based on connection state
+            const disconnectButton = document.getElementById('disconnect-button');
+            disconnectButton.disabled = !data.client_enabled;
+        }
+        
+        // Scan for WiFi networks
+        function scanNetworks() {
+            const scanButton = document.getElementById('scan-button');
+            const scanStatus = document.getElementById('scan-status');
+            const networkSelect = document.getElementById('wifi-network-select');
+            
+            scanButton.disabled = true;
+            scanButton.textContent = 'Scanning...';
+            scanStatus.textContent = 'Starting scan...';
+            scanStatus.className = 'info';
+            scanStatus.classList.remove('hidden');
+            
+            // Clear existing options
+            networkSelect.innerHTML = '<option value="">Select a network...</option>';
+            
+            // Start scan
+            fetch('/api/wifi/scan')
+                .then(response => {
+                    if (response.ok) {
+                        scanStatus.textContent = 'Scanning for networks...';
+                        // Poll for results
+                        pollScanResults();
+                    } else {
+                        throw new Error('Failed to start scan');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error starting scan:', error);
+                    scanStatus.textContent = 'Failed to start scan';
+                    scanStatus.className = 'error';
+                    scanButton.disabled = false;
+                    scanButton.textContent = 'Scan for Networks';
+                });
+        }
+        
+        // Poll for scan results
+        function pollScanResults() {
+            const scanButton = document.getElementById('scan-button');
+            const scanStatus = document.getElementById('scan-status');
+            const networkSelect = document.getElementById('wifi-network-select');
+            
+            fetch('/api/wifi/scan-results')
+                .then(response => {
+                    if (response.status === 202) {
+                        // Still scanning, poll again
+                        scanStatus.textContent = 'Scanning for networks...';
+                        setTimeout(pollScanResults, 1000);
+                        return null; // Don't process further
+                    } else if (response.ok) {
+                        return response.json();
+                    } else {
+                        throw new Error('Scan failed');
+                    }
+                })
+                .then(data => {
+                    // Only process data if we actually got some (not null from 202 response)
+                    if (data === null) {
+                        return; // Exit early for 202 responses
+                    }
+                    
+                    if (data && data.networks && data.networks.length > 0) {
+                        data.networks.forEach(network => {
+                            const option = document.createElement('option');
+                            option.value = network.ssid;
+                            option.textContent = `${network.ssid} (${network.rssi} dBm, ${network.encryption})`;
+                            networkSelect.appendChild(option);
+                        });
+                        scanStatus.textContent = `Found ${data.networks.length} networks`;
+                        scanStatus.className = 'success';
+                        scanButton.disabled = false;
+                        scanButton.textContent = 'Scan for Networks';
+                    } else {
+                        scanStatus.textContent = 'No networks found';
+                        scanStatus.className = 'error';
+                        scanButton.disabled = false;
+                        scanButton.textContent = 'Scan for Networks';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error getting scan results:', error);
+                    scanStatus.textContent = 'Failed to get scan results';
+                    scanStatus.className = 'error';
+                    scanButton.disabled = false;
+                    scanButton.textContent = 'Scan for Networks';
+                });
+        }
+        
+        // Handle network selection
+        function onNetworkSelect() {
+            const networkSelect = document.getElementById('wifi-network-select');
+            const testButton = document.getElementById('test-button');
+            const saveButton = document.getElementById('save-button');
+            
+            if (networkSelect.value) {
+                testButton.disabled = false;
+                saveButton.disabled = false;
+            } else {
+                testButton.disabled = true;
+                saveButton.disabled = true;
+            }
+        }
+        
+        // Test WiFi connection
+        function testConnection() {
+            const networkSelect = document.getElementById('wifi-network-select');
+            const passwordInput = document.getElementById('wifi-password');
+            const testButton = document.getElementById('test-button');
+            const wifiMessage = document.getElementById('wifi-message');
+            
+            const ssid = networkSelect.value;
+            const password = passwordInput.value;
+            
+            if (!ssid) {
+                showWiFiMessage('Please select a network', 'error');
+                return;
+            }
+            
+            testButton.disabled = true;
+            testButton.textContent = 'Testing...';
+            wifiMessage.textContent = 'Testing connection...';
+            wifiMessage.className = 'info';
+            wifiMessage.classList.remove('hidden');
+            
+            const formData = new FormData();
+            formData.append('ssid', ssid);
+            formData.append('password', password);
+            
+            fetch('/api/wifi/test', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    showWiFiMessage('Connection test successful!', 'success');
+                } else {
+                    showWiFiMessage('Connection test failed. Check password.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error testing connection:', error);
+                showWiFiMessage('Error testing connection: ' + error.message, 'error');
+            })
+            .finally(() => {
+                testButton.disabled = false;
+                testButton.textContent = 'Test Connection';
+            });
+        }
+        
+        // Save WiFi connection
+        function saveConnection() {
+            const networkSelect = document.getElementById('wifi-network-select');
+            const passwordInput = document.getElementById('wifi-password');
+            const saveButton = document.getElementById('save-button');
+            
+            const ssid = networkSelect.value;
+            const password = passwordInput.value;
+            
+            if (!ssid) {
+                showWiFiMessage('Please select a network', 'error');
+                return;
+            }
+            
+            saveButton.disabled = true;
+            saveButton.textContent = 'Saving...';
+            showWiFiMessage('Saving WiFi credentials...', 'info');
+            
+            const formData = new FormData();
+            formData.append('ssid', ssid);
+            formData.append('password', password);
+            
+            fetch('/api/wifi/connect', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    showWiFiMessage('WiFi credentials saved successfully! Device will restart.', 'success');
+                    // Refresh status after a delay
+                    setTimeout(() => {
+                        fetchWiFiStatus();
+                        fetchStatus();
+                    }, 2000);
+                } else {
+                    showWiFiMessage('Failed to save WiFi credentials', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error saving connection:', error);
+                showWiFiMessage('Error saving connection: ' + error.message, 'error');
+            })
+            .finally(() => {
+                saveButton.disabled = false;
+                saveButton.textContent = 'Save & Connect';
+            });
+        }
+        
+        // Disconnect WiFi
+        function disconnectWiFi() {
+            if (!confirm('Are you sure you want to disconnect and clear WiFi credentials?')) {
+                return;
+            }
+            
+            const disconnectButton = document.getElementById('disconnect-button');
+            disconnectButton.disabled = true;
+            disconnectButton.textContent = 'Disconnecting...';
+            showWiFiMessage('Disconnecting WiFi...', 'info');
+            
+            fetch('/api/wifi/disconnect', {
+                method: 'POST'
+            })
+            .then(response => {
+                if (response.ok) {
+                    showWiFiMessage('WiFi disconnected and credentials cleared', 'success');
+                    // Refresh status
+                    setTimeout(() => {
+                        fetchWiFiStatus();
+                        fetchStatus();
+                    }, 1000);
+                } else {
+                    showWiFiMessage('Failed to disconnect WiFi', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error disconnecting WiFi:', error);
+                showWiFiMessage('Error disconnecting WiFi: ' + error.message, 'error');
+            })
+            .finally(() => {
+                disconnectButton.disabled = false;
+                disconnectButton.textContent = 'Disconnect & Clear';
+            });
+        }
+        
+        // Show WiFi message
+        function showWiFiMessage(message, type) {
+            const wifiMessage = document.getElementById('wifi-message');
+            wifiMessage.textContent = message;
+            wifiMessage.className = type;
+            wifiMessage.classList.remove('hidden');
+            
+            // Auto-hide success/info messages after 5 seconds
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    wifiMessage.classList.add('hidden');
+                }, 5000);
+            }
         }
         
         // =============================================================================
