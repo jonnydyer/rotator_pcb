@@ -208,13 +208,15 @@ void setupWebServer() {
         doc["pos_90_degrees"] = config.pos_90_degrees;
         doc["pos_180_degrees"] = config.pos_180_degrees;
         doc["pos_270_degrees"] = config.pos_270_degrees;
+
+        doc["full_rotation_count"] = config.full_rotation_count;
         
         // Colors
         doc["color_0"] = config.color_0;
         doc["color_90"] = config.color_90;
         doc["color_180"] = config.color_180;
         doc["color_270"] = config.color_270;
-        
+
         // WiFi settings
         doc["ap_ssid"] = config.ap_ssid;
         doc["ap_password"] = config.ap_password;
@@ -271,6 +273,10 @@ void setupWebServer() {
             
             if (jsonObj.containsKey("pos_270_degrees")) {
                 config.pos_270_degrees = jsonObj["pos_270_degrees"];
+            }
+
+            if (jsonObj.containsKey("full_rotation_count")) {
+                config.full_rotation_count = jsonObj["full_rotation_count"];
             }
             
             // Colors if present

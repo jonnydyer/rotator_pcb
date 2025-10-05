@@ -34,6 +34,8 @@ void resetToDefaultConfig() {
     config.color_90 = DEFAULT_COLOR_90;
     config.color_180 = DEFAULT_COLOR_180;
     config.color_270 = DEFAULT_COLOR_270;
+
+    config.full_rotation_count = FULL_ROTATION_COUNT;
     
     // Rotation settings
     config.rotation_interval = DEFAULT_ROTATION_INTERVAL;
@@ -117,6 +119,8 @@ bool loadConfiguration() {
     config.pos_90_degrees = doc["pos_90_degrees"] | POS_90_DEGREES;
     config.pos_180_degrees = doc["pos_180_degrees"] | POS_180_DEGREES;
     config.pos_270_degrees = doc["pos_270_degrees"] | POS_270_DEGREES;
+
+    config.full_rotation_count = doc["full_rotation_count"] | FULL_ROTATION_COUNT;
     
     // NeoPixel colors
     config.color_0 = doc["color_0"] | DEFAULT_COLOR_0;
@@ -165,6 +169,8 @@ bool saveConfiguration() {
     doc["pos_180_degrees"] = config.pos_180_degrees;
     doc["pos_270_degrees"] = config.pos_270_degrees;
     
+    doc["full_rotation_count"] = config.full_rotation_count;
+
     // NeoPixel colors
     doc["color_0"] = config.color_0;
     doc["color_90"] = config.color_90;

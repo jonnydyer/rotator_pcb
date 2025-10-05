@@ -22,6 +22,7 @@
 #define POS_90_DEGREES 39375  // Assuming 39375 counts for 90 degree rotation
 #define POS_180_DEGREES 78750
 #define POS_270_DEGREES 118125
+#define FULL_ROTATION_COUNT 157500
 
 // NEOPIXEL settings
 #define DEFAULT_COLOR_0 0x00FF00    // Green
@@ -63,6 +64,8 @@ struct RotatorConfig {
     int32_t pos_90_degrees;
     int32_t pos_180_degrees;
     int32_t pos_270_degrees;
+
+    int32_t full_rotation_count;
     
     // Color settings for each position
     uint32_t color_0;

@@ -187,8 +187,5 @@ void updateMotionControlCalibration() {
     // Calculate full revolution from calibration data using 270° span
     full_revolution_count = abs(config.pos_270_degrees - config.pos_0_degrees) * 4 / 3;
     
-    // Update motion control system
-    setFullRevolutionCount(full_revolution_count);
-    
     log_i("Motion control calibration updated - Full revolution: %d counts", full_revolution_count);
 } 

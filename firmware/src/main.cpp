@@ -35,6 +35,7 @@ void setup_quadrature_encoders();
 void setup_mcpwm();
 void setup_timers();
 void setup_spiffs();
+void reset_motor_control();
 void set_motor1_speed(float speed);
 void set_motor2_speed(float speed);
 void disable_motors();
@@ -57,9 +58,12 @@ esp_timer_handle_t auto_rotation_timer;
 esp_timer_handle_t debug_timer;
 
 // Variables for velocity calculation
-volatile int32_t last_encoder_count = 0;
-volatile float encoder_velocity = 0; // counts per second
-volatile unsigned long last_velocity_calc_time = 0;
+volatile int32_t g_last_encoder_count = 0;
+volatile float g_encoder_velocity = 0; // counts per second
+volatile unsigned long g_last_velocity_calc_time = 0;
+
+// Variable for sanity checking motion
+volatile int32_t g_last_position_error = 0;
 
 // LED state
 volatile bool led_state = false;
@@ -81,7 +85,6 @@ static float motion_vel_loop_i = DEFAULT_VEL_LOOP_I;
 static float motion_vel_loop_d = DEFAULT_VEL_LOOP_D;
 static float motion_vel_filter_persistence = DEFAULT_VEL_FILTER_PERSISTENCE;
 static float motion_spd_err_persistence = DEFAULT_SPD_ERR_PERSISTENCE;
-static int32_t full_revolution_count = 0;  // Full revolution in encoder counts for unwrapping
 
 // Debug variables for WebSocket streaming
 float debug_speed_error = 0.0f;
@@ -253,10 +256,21 @@ void setup_quadrature_encoders() {
   encoder2.attachFullQuad(E2A_PIN, E2B_PIN);
   encoder2.setCount(0);
   
-  last_velocity_calc_time = millis();
+  g_last_velocity_calc_time = millis();
   last_motion_update_time = millis();
   
   log_i("Encoders initialized");
+}
+
+void reset_motor_control(){
+  motion_active = false;
+  set_motor1_speed(0);
+  set_motor2_speed(0);
+  disable_motors();
+  encoder1.setCount(0);
+  encoder2.setCount(0);
+  target_position = 0;
+  setup_mcpwm();
 }
 
 void IRAM_ATTR toggle_led(void* arg) {
@@ -267,22 +281,23 @@ void IRAM_ATTR toggle_led(void* arg) {
 void IRAM_ATTR update_encoder_status(void* arg) {
   int32_t current_count = encoder1.getCount();
   unsigned long current_time = millis();
-  unsigned long time_diff = current_time - last_velocity_calc_time;
+  unsigned long time_diff = current_time - g_last_velocity_calc_time;
   static float last_encoder_velocity = 0;
   
   // Calculate velocity in counts per second
   if (time_diff > 0) {
-    encoder_velocity = (1 - motion_vel_filter_persistence) * ((float)(current_count - last_encoder_count) * 1000.0) / time_diff + last_encoder_velocity * motion_vel_filter_persistence;
-    last_encoder_velocity = encoder_velocity;
+    g_encoder_velocity = (1 - motion_vel_filter_persistence) * ((float)(current_count - g_last_encoder_count) * 1000.0) / time_diff + last_encoder_velocity * motion_vel_filter_persistence;
+    last_encoder_velocity = g_encoder_velocity;
   }
   
   // Update values for next calculation
-  last_encoder_count = current_count;
-  last_velocity_calc_time = current_time;
+  g_last_encoder_count = current_count;
+  g_last_velocity_calc_time = current_time;
 }
 
 void IRAM_ATTR update_motion_control(void* arg) {
   if (!motion_active) {
+    set_motor1_speed(0);
     return;
   }
 
@@ -290,10 +305,21 @@ void IRAM_ATTR update_motion_control(void* arg) {
   static float speed_error_previous = 0;
   static float last_target_velocity = 0;
   static float last_speed_deriv_err = 0;
+
+  const int32_t full_revolution_count = config.full_rotation_count;
+
   int32_t current_position = encoder1.getCount();
   unsigned long current_time = millis();
   unsigned long dt_ms = current_time - last_motion_update_time;
   
+  if(abs(current_position - target_position) > (abs(g_last_position_error) + motion_position_hysteresis)) {
+    set_motor1_speed(0);
+    reset_motor_control();
+    motion_active = false;
+    log_w("Motion Error increasing with time!  Motion stopped!");
+    return;
+  }
+
   // Check if we've reached target position with hysteresis
   if (abs(current_position - target_position) <= motion_position_hysteresis) {
     // We've reached the target position, stop the motor
@@ -356,7 +382,7 @@ void IRAM_ATTR update_motion_control(void* arg) {
   last_target_velocity = target_velocity;
   
   // PID controller for velocity
-  float speed_error = target_velocity - encoder_velocity;
+  float speed_error = target_velocity - g_encoder_velocity;
   speed_error_integral += speed_error * dt_ms / 1000.0;
   float speed_error_derivative = (1.0f - motion_spd_err_persistence) * (speed_error - speed_error_previous) / (dt_ms / 1000.0) + motion_spd_err_persistence * last_speed_deriv_err;
   last_speed_deriv_err = speed_error_derivative;
@@ -378,6 +404,7 @@ void IRAM_ATTR update_motion_control(void* arg) {
   
   // Update timing for next cycle
   last_motion_update_time = current_time;
+  g_last_position_error = current_position - target_position;
 }
 
 void IRAM_ATTR check_auto_rotation(void* arg) {
@@ -385,15 +412,21 @@ void IRAM_ATTR check_auto_rotation(void* arg) {
 }
 
 float get_encoder_velocity() {
-  return encoder_velocity;
+  return g_encoder_velocity;
 }
 
 /**
  * Initiates a motion to a target position using a trapezoidal velocity profile
  */
 void move_to_position(int32_t position) {
+  if(motion_active){
+    return;
+  }
+  
   // Set motion parameters
+  
   target_position = position;
+  g_last_position_error = encoder1.getCount() - target_position;
   
   // Reset motion control timing
   last_motion_update_time = millis();
@@ -550,14 +583,6 @@ void setMotionControlConfig(uint32_t position_hysteresis, float max_speed, float
     log_i("Filter paramters updated: velocity filter =%.2f, speed error filter=%.2f", vel_filter_persistence, spd_err_persistence);
 }
 
-/**
- * Set full revolution count for encoder unwrapping
- */
-void setFullRevolutionCount(int32_t full_revolution) {
-    full_revolution_count = full_revolution;
-    log_i("Full revolution count set to: %d", full_revolution_count);
-}
-
 int32_t get_current_position() {
   return encoder1.getCount();
 }
@@ -569,7 +594,7 @@ MotionControlInfo get_motion_control_info() {
   info.speed_error = debug_speed_error;
   info.speed_error_integral = debug_speed_error_integral;
   info.speed_error_derivative = debug_speed_error_derivative;
-  info.velocity = encoder_velocity;
+  info.velocity = g_encoder_velocity;
   return info;
 }
 

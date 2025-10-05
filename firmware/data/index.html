@@ -440,6 +440,14 @@
             <div class="action-buttons">
                 <button onclick="setZeroPosition()">Set Zero Position</button>
             </div>
+
+            <h2>Full Revolution Count</h2>
+            <p>How many counts is a full revolution?</p>
+            <div class="form-group">
+                <label for="full-rotation-count">Full Rotation (encoder counts)</label>
+                <input type="number" id="full-rotation-count" placeholder="Enter position in counts">
+                <button id="goto-button" onclick="saveFullRotationSettings()">Set Full Rotation Count</button>
+            </div>
             
             <h2>Go to Position</h2>
             <p>Move to a specific encoder position for testing or calibration.</p>
@@ -451,6 +459,15 @@
             <div id="goto-status" class="hidden"></div>
             
             <h2>Fine Tuning</h2>
+            <div class="form-group">
+                <label for="nudge-position">Nudge position</label>
+                <input type="number" id="nudge-position" value="100">
+            </div>
+            <div class="action-buttons">
+                <button onclick="nudgePosition(true)">Nudge Forward</button>
+                <button onclick="nudgePosition(false)">Nudge Backward</button>
+            </div>
+            
             <p>Current detected angle: <span id="calibration-current-angle">-</span>°</p>
             <div class="form-group">
                 <label for="pos-0-degrees">0° Position (encoder counts)</label>
@@ -720,13 +737,16 @@
                 const pos90 = document.getElementById('pos-90-degrees');
                 const pos180 = document.getElementById('pos-180-degrees');
                 const pos270 = document.getElementById('pos-270-degrees');
+
+                const full_rotation_count = document.getElementById('full-rotation-count');
                 
-                console.log('Position elements found:', {pos0, pos90, pos180, pos270});
                 
                 if (pos0) pos0.value = data.pos_0_degrees;
                 if (pos90) pos90.value = data.pos_90_degrees;
                 if (pos180) pos180.value = data.pos_180_degrees;
                 if (pos270) pos270.value = data.pos_270_degrees;
+                if (full_rotation_count) full_rotation_count.value = data.full_rotation_count;
+
                 
                 // Colors
                 updateColorField('color-0', 'preview-0', data.color_0);
@@ -833,6 +853,44 @@
             .catch(error => {
                 hideLoading();
                 console.error('Error rotating:', error);
+                alert('Error: ' + error.message);
+            });
+        }
+
+        function nudgePosition(forward) {
+            const nudgeSize = parseInt(document.getElementById('nudge-position').value);
+            const currPos = currentStatus.currentPosition;
+
+            if (isNaN(nudgeSize)) {
+                showGotoStatus('Please enter a valid nudge size', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            if(forward == true){
+                formData.append('position', currPos + nudgeSize);
+            }
+            else{
+                formData.append('position', currPos - nudgeSize);
+            }
+            
+            fetch('/api/goto', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                hideLoading();
+                if (response.ok) {
+                    // Update the status after a short delay to allow rotation to start
+                    setTimeout(fetchStatus, 100);
+                } else {
+                    console.error('Error commanding nudging:', error);
+                    alert('Failed to command rotation');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error nudging:', error);
                 alert('Error: ' + error.message);
             });
         }
@@ -998,6 +1056,19 @@
                 pos_90_degrees: pos90,
                 pos_180_degrees: pos180,
                 pos_270_degrees: pos270
+            });
+        }
+        
+        function saveFullRotationSettings() {
+            const full_rotation_count = parseInt(document.getElementById('full-rotation-count').value);
+            
+            if (isNaN(full_rotation_count)) {
+                alert('Full revolution count must be a valid number');
+                return;
+            }
+            
+            saveSettings({
+                full_rotation_count: full_rotation_count,
             });
         }
         
