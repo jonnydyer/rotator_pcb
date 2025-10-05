@@ -314,8 +314,19 @@ void IRAM_ATTR update_motion_control(void* arg) {
   
   if(abs(current_position - target_position) > (abs(g_last_position_error) + motion_position_hysteresis)) {
     set_motor1_speed(0);
-    reset_motor_control();
     motion_active = false;
+
+    // Reset PID control variables
+    speed_error_integral = 0;
+    speed_error_previous = 0;
+    last_target_velocity = 0;
+    last_speed_deriv_err = 0;
+    
+    // Reset debug variables
+    debug_speed_error = 0.0f;
+    debug_speed_error_integral = 0.0f;
+    debug_speed_error_derivative = 0.0f;
+
     log_w("Motion Error increasing with time!  Motion stopped!");
     return;
   }
