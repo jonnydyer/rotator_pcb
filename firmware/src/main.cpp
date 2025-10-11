@@ -327,6 +327,8 @@ void IRAM_ATTR update_motion_control(void* arg) {
     debug_speed_error_integral = 0.0f;
     debug_speed_error_derivative = 0.0f;
 
+    target_position = current_position;
+
     log_w("Motion Error increasing with time!  Motion stopped!");
     return;
   }
@@ -420,6 +422,7 @@ void IRAM_ATTR update_motion_control(void* arg) {
 
 void IRAM_ATTR check_auto_rotation(void* arg) {
   processAutoRotation();
+  // log_i("WiFi RSSI: %d dBm", WiFi.RSSI());
 }
 
 float get_encoder_velocity() {

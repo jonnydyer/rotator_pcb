@@ -298,6 +298,10 @@
                     <div>Auto Rotation</div>
                     <div class="status-value" id="auto-rotation-status">-</div>
                 </div>
+                <div>
+                    <div>Network: <span id="current-wifi-ssid">None</span></div>
+                    <div>WiFi RSSI: <span id="current-wifi-rssi">Unknown</span></div>
+                </div>
             </div>
         </div>
         
@@ -387,8 +391,7 @@
             </div>
             
             <div class="card">
-                <h3>Current WiFi Settings</h3>
-                <p>Network: <span id="current-wifi-ssid">None</span></p>
+                <h3>Current WiFi Network</h3>
                 <button onclick="disconnectWiFi()" id="disconnect-button" disabled>Disconnect & Clear</button>
             </div>
         </div>
@@ -1318,6 +1321,7 @@
             document.getElementById('wifi-status').textContent = data.status || '-';
             document.getElementById('wifi-ip').textContent = data.ip || '-';
             document.getElementById('current-wifi-ssid').textContent = data.ssid || 'None';
+            document.getElementById('current-wifi-rssi').textContent = data.rssi + 'dBm' || 'None';
             document.getElementById('wifi-mdns').textContent = data.mdns_name ? `${data.mdns_name}.local` : '-';
             
             // Enable/disable disconnect button based on connection state

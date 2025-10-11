@@ -565,6 +565,7 @@ void setupWebServer() {
         doc["ssid"] = config.wifi_ssid;
         doc["client_enabled"] = config.wifi_client_enabled;
         doc["mdns_name"] = config.mdns_name;
+        doc["rssi"] = WiFi.RSSI();
         
         if (WiFi.getMode() == WIFI_STA && WiFi.status() == WL_CONNECTED) {
             doc["ip"] = WiFi.localIP().toString();
