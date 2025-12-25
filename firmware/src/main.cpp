@@ -35,7 +35,6 @@ void setup_quadrature_encoders();
 void setup_mcpwm();
 void setup_timers();
 void setup_spiffs();
-void reset_motor_control();
 void set_motor1_speed(float speed);
 void set_motor2_speed(float speed);
 void disable_motors();
@@ -43,8 +42,9 @@ void toggle_led(void* arg);
 void update_encoder_status(void* arg);
 void update_motion_control(void* arg);
 void check_auto_rotation(void* arg);
+boolean is_motion_active(void);
 void send_debug_data_timer(void* arg);
-float generate_trapezoidal_profile(int32_t current_position, int32_t target_position, float current_velocity, float max_speed, float acceleration, unsigned long dt_ms);
+float generate_trapezoidal_profile(int64_t current_position, int64_t target_position, float current_velocity, float max_speed, float acceleration, unsigned long dt_ms);
 
 // Global variables
 ESP32Encoder encoder1;
@@ -58,19 +58,19 @@ esp_timer_handle_t auto_rotation_timer;
 esp_timer_handle_t debug_timer;
 
 // Variables for velocity calculation
-volatile int32_t g_last_encoder_count = 0;
+volatile int64_t g_last_encoder_count = 0;
 volatile float g_encoder_velocity = 0; // counts per second
 volatile unsigned long g_last_velocity_calc_time = 0;
 
 // Variable for sanity checking motion
-volatile int32_t g_last_position_error = 0;
+volatile int64_t g_last_position_error = 0;
 
 // LED state
 volatile bool led_state = false;
 
 // Motion control variables
 volatile bool motion_active = false;
-volatile int32_t target_position = 0;
+volatile int64_t target_position = 0;
 volatile float max_velocity = DEFAULT_MAX_SPEED;
 volatile float acceleration = DEFAULT_ACCELERATION;
 volatile float current_setpoint_velocity = 0;
@@ -90,6 +90,7 @@ static float motion_spd_err_persistence = DEFAULT_SPD_ERR_PERSISTENCE;
 float debug_speed_error = 0.0f;
 float debug_speed_error_integral = 0.0f;
 float debug_speed_error_derivative = 0.0f;
+float debug_control_pwm_out = 0.0f;
 
 void setup() {
   // Initialize the system
@@ -279,7 +280,7 @@ void IRAM_ATTR toggle_led(void* arg) {
 }
 
 void IRAM_ATTR update_encoder_status(void* arg) {
-  int32_t current_count = encoder1.getCount();
+  int64_t current_count = encoder1.getCount();
   unsigned long current_time = millis();
   unsigned long time_diff = current_time - g_last_velocity_calc_time;
   static float last_encoder_velocity = 0;
@@ -298,6 +299,7 @@ void IRAM_ATTR update_encoder_status(void* arg) {
 void IRAM_ATTR update_motion_control(void* arg) {
   if (!motion_active) {
     set_motor1_speed(0);
+    debug_control_pwm_out = 0.0f;
     return;
   }
 
@@ -308,12 +310,13 @@ void IRAM_ATTR update_motion_control(void* arg) {
 
   const int32_t full_revolution_count = config.full_rotation_count;
 
-  int32_t current_position = encoder1.getCount();
+  int64_t current_position = encoder1.getCount();
   unsigned long current_time = millis();
   unsigned long dt_ms = current_time - last_motion_update_time;
   
   if(abs(current_position - target_position) > (abs(g_last_position_error) + motion_position_hysteresis)) {
     set_motor1_speed(0);
+    debug_control_pwm_out = 0.0f;
     motion_active = false;
 
     // Reset PID control variables
@@ -337,6 +340,7 @@ void IRAM_ATTR update_motion_control(void* arg) {
   if (abs(current_position - target_position) <= motion_position_hysteresis) {
     // We've reached the target position, stop the motor
     set_motor1_speed(0);
+    debug_control_pwm_out = 0.0f;
     motion_active = false;
     
     // Reset PID control variables
@@ -349,37 +353,8 @@ void IRAM_ATTR update_motion_control(void* arg) {
     debug_speed_error = 0.0f;
     debug_speed_error_integral = 0.0f;
     debug_speed_error_derivative = 0.0f;
-    
-    // Check if encoder unwrapping is needed
-    if (full_revolution_count > 0) {
-      int32_t distance_from_zero = abs(current_position - config.pos_0_degrees);
-      
-      // log_i("Unwrap check: pos=%d, pos_0=%d, dist=%d, full_rev=%d", 
-      //       current_position, config.pos_0_degrees, distance_from_zero, full_revolution_count);
-      
-      if (distance_from_zero > full_revolution_count) {
-        // Determine unwrap direction
-        int32_t unwrapped_position;
-        if (current_position > config.pos_0_degrees) {
-          // Wrapped in positive direction
-          unwrapped_position = current_position - full_revolution_count;
-        } else {
-          // Wrapped in negative direction
-          unwrapped_position = current_position + full_revolution_count;
-        }
-        
-        encoder1.setCount(unwrapped_position);
-        log_i("Encoder unwrapped: %d -> %d (full_rev: %d)", 
-              current_position, unwrapped_position, full_revolution_count);
-        
-        // Update current_position for the log message below
-        current_position = unwrapped_position;
-      }
-    } else {
-      log_w("Unwrap skipped: full_revolution_count is %d", full_revolution_count);
-    }
-    
-    log_i("Target position reached: %d (current: %d)", target_position, current_position);
+
+    log_i("Target position reached: %lld (current: %lld)", target_position, current_position);
     return;
   }
   
@@ -400,7 +375,7 @@ void IRAM_ATTR update_motion_control(void* arg) {
   float speed_error_derivative = (1.0f - motion_spd_err_persistence) * (speed_error - speed_error_previous) / (dt_ms / 1000.0) + motion_spd_err_persistence * last_speed_deriv_err;
   last_speed_deriv_err = speed_error_derivative;
   speed_error_previous = speed_error;
-  float motor_speed = constrain(motion_vel_loop_p * speed_error + motion_vel_loop_i * speed_error_integral + motion_vel_loop_d * speed_error_derivative, -1.0f, 1.0f);
+  float motor_speed = motion_vel_loop_p * speed_error + motion_vel_loop_i * speed_error_integral + motion_vel_loop_d * speed_error_derivative;
 
   // Update debug variables for WebSocket streaming
   debug_speed_error = speed_error;
@@ -414,10 +389,15 @@ void IRAM_ATTR update_motion_control(void* arg) {
 
   // Apply motor speed
   set_motor1_speed(-motor_speed);
+  debug_control_pwm_out = -motor_speed;
   
   // Update timing for next cycle
   last_motion_update_time = current_time;
   g_last_position_error = current_position - target_position;
+}
+
+bool is_motion_active(void){
+  return motion_active;
 }
 
 void IRAM_ATTR check_auto_rotation(void* arg) {
@@ -425,30 +405,26 @@ void IRAM_ATTR check_auto_rotation(void* arg) {
   // log_i("WiFi RSSI: %d dBm", WiFi.RSSI());
 }
 
-float get_encoder_velocity() {
-  return g_encoder_velocity;
-}
-
 /**
  * Initiates a motion to a target position using a trapezoidal velocity profile
  */
-void move_to_position(int32_t position) {
+void move_to_position(int64_t position) {
   if(motion_active){
     return;
   }
-  
+
   // Set motion parameters
-  
+
   target_position = position;
   g_last_position_error = encoder1.getCount() - target_position;
-  
+
   // Reset motion control timing
   last_motion_update_time = millis();
-  
+
   // Activate motion control
   motion_active = true;
-  
-  log_i("Starting motion to position %d, max speed: %.2f, accel: %.2f", 
+
+  log_i("Starting motion to position %lld, max speed: %.2f, accel: %.2f",
               position, motion_max_speed, motion_acceleration);
 }
 
@@ -456,8 +432,8 @@ void move_to_position(int32_t position) {
  * Generates a trapezoidal velocity profile for smooth motion
  * Returns the target velocity at this point in time
  */
-float generate_trapezoidal_profile(int32_t current_position, int32_t target_position, 
-                                  float current_velocity, float max_speed, 
+float generate_trapezoidal_profile(int64_t current_position, int64_t target_position,
+                                  float current_velocity, float max_speed,
                                   float acceleration, unsigned long dt_ms) {
   // Calculate distance to target
   float distance_remaining = target_position - current_position;
@@ -496,7 +472,7 @@ float generate_trapezoidal_profile(int32_t current_position, int32_t target_posi
  */
 void set_motor1_speed(float speed) {
   // Constrain speed to valid range
-  speed = constrain(speed, -1.0f, 1.0f);
+  speed = constrain(speed, -MAX_MOTOR_PWM_DUTY_CYCLE, MAX_MOTOR_PWM_DUTY_CYCLE);
   
   if (speed > 0) {
     // Forward direction: M1A high, M1B PWM
@@ -525,7 +501,7 @@ void set_motor1_speed(float speed) {
  */
 void set_motor2_speed(float speed) {
   // Constrain speed to valid range
-  speed = constrain(speed, -1.0f, 1.0f);
+  speed = constrain(speed, -MAX_MOTOR_PWM_DUTY_CYCLE, MAX_MOTOR_PWM_DUTY_CYCLE);
   
   if (speed > 0) {
     // Forward direction: M2A high, M2B PWM
@@ -597,7 +573,7 @@ void setMotionControlConfig(uint32_t position_hysteresis, float max_speed, float
     log_i("Filter paramters updated: velocity filter =%.2f, speed error filter=%.2f", vel_filter_persistence, spd_err_persistence);
 }
 
-int32_t get_current_position() {
+int64_t get_current_position() {
   return encoder1.getCount();
 }
 
@@ -609,6 +585,7 @@ MotionControlInfo get_motion_control_info() {
   info.speed_error_integral = debug_speed_error_integral;
   info.speed_error_derivative = debug_speed_error_derivative;
   info.velocity = g_encoder_velocity;
+  info.pwm_control_out = debug_control_pwm_out * 100;
   return info;
 }
 

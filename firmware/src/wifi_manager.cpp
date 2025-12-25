@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 #include "main.h"
 #include "web_ui.h"  // Include the compiled HTML
+#include "build_info.h"
 #include "ESPmDNS.h"
 
 // Global web server instance
@@ -157,6 +158,7 @@ void sendDebugData() {
     doc["speedError"] = motionInfo.speed_error;
     doc["errorIntegral"] = motionInfo.speed_error_integral;  
     doc["errorDerivative"] = motionInfo.speed_error_derivative;
+    doc["controlPWMOut"] = motionInfo.pwm_control_out;
     
     String jsonString;
     serializeJson(doc, jsonString);
@@ -181,17 +183,21 @@ void setupWebServer() {
         StaticJsonDocument<256> doc;  // Smaller document for just status
         
         doc["currentPosition"] = get_current_position();
-        doc["currentAngle"] = calculateCurrentAngle();
+        doc["currentAngle"] = positionToAngle(get_current_position());
         doc["autoRotationEnabled"] = config.auto_rotation_enabled;
-        
-        // Current color based on angle
-        int currentAngle = calculateCurrentAngle();
-        switch(currentAngle) {
+        doc["autoRotateForward"] = config.auto_rotate_forward;
+
+        // Current color based on angle (rounded to nearest 90)
+        int currentAngle = positionToAngle(get_current_position());
+        int currentAngleSnapped = ((currentAngle + 45) / 90) * 90;
+        if (currentAngleSnapped >= 360) currentAngleSnapped = 0;
+        switch(currentAngleSnapped) {
             case 0: doc["currentColor"] = config.color_0; break;
             case 90: doc["currentColor"] = config.color_90; break;
             case 180: doc["currentColor"] = config.color_180; break;
             case 270: doc["currentColor"] = config.color_270; break;
         }
+        doc["motionActive"] = is_motion_active();
         
         serializeJson(doc, *response);
         log_i("Status API access");
@@ -239,7 +245,21 @@ void setupWebServer() {
         log_i("Config API access");
         request->send(response);
     });
-    
+
+    // API endpoint for build information
+    webServer.on("/api/buildinfo", HTTP_GET, [](AsyncWebServerRequest *request) {
+        AsyncResponseStream *response = request->beginResponseStream("application/json");
+        StaticJsonDocument<256> doc;
+
+        doc["gitHash"] = BUILD_GIT_HASH;
+        doc["gitBranch"] = BUILD_GIT_BRANCH;
+        doc["buildTimestamp"] = BUILD_TIMESTAMP;
+
+        serializeJson(doc, *response);
+        log_i("Build info API access");
+        request->send(response);
+    });
+
     // API endpoint for updating settings
     AsyncCallbackJsonWebHandler* settingsHandler = new AsyncCallbackJsonWebHandler("/api/settings", 
         [](AsyncWebServerRequest *request, JsonVariant &json) {
@@ -303,6 +323,10 @@ void setupWebServer() {
             
             if (jsonObj.containsKey("auto_rotation_enabled")) {
                 config.auto_rotation_enabled = jsonObj["auto_rotation_enabled"];
+            }
+
+            if (jsonObj.containsKey("auto_rotate_forward")) {
+                config.auto_rotate_forward = jsonObj["auto_rotate_forward"];
             }
             
             // Motion control parameters if present
@@ -377,28 +401,8 @@ void setupWebServer() {
     webServer.on("/api/set-zero", HTTP_POST, [](AsyncWebServerRequest *request) {
         log_i("Set Zero API access");
         
-        // Get current encoder position
-        int32_t currentPosition = get_current_position();
-        
-        // Calculate offset to subtract from all positions
-        int32_t offset = currentPosition - config.pos_0_degrees;
-        
-        // Update all calibration positions by subtracting the offset
-        config.pos_0_degrees = currentPosition;
-        config.pos_90_degrees += offset;
-        config.pos_180_degrees += offset;
-        config.pos_270_degrees += offset;
-        
-        // Save the updated configuration
-        saveConfiguration();
-        
-        // Update calibration-based parameters
-        updateMotionControlCalibration();
-        
-        log_i("Zero position set. Offset applied: %d", offset);
-        log_i("New positions - 0°: %d, 90°: %d, 180°: %d, 270°: %d", 
-              config.pos_0_degrees, config.pos_90_degrees, 
-              config.pos_180_degrees, config.pos_270_degrees);
+        reset_motor_control();
+        log_i("Zero position set. Offset applied)");
         
         request->send(200, "text/plain", "Zero position set successfully");
     });
@@ -410,19 +414,13 @@ void setupWebServer() {
             request->send(400, "text/plain", "Missing 'position' parameter");
             return;
         }
-        
-        int32_t targetPosition = request->getParam("position", true)->value().toInt();
-        
-        // Basic safety check - limit to reasonable range
-        if (abs(targetPosition) > 2000000) {
-            request->send(400, "text/plain", "Position out of safe range (±100000)");
-            return;
-        }
-        
+
+        int64_t targetPosition = strtoll(request->getParam("position", true)->value().c_str(), NULL, 10);
+
         // Command the movement using default speed and acceleration
         move_to_position(targetPosition);
-        
-        log_i("Commanded movement to position: %d", targetPosition);
+
+        log_i("Commanded movement to position: %lld", targetPosition);
         request->send(200, "text/plain", "Movement commanded");
     });
     

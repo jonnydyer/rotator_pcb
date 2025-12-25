@@ -19,10 +19,10 @@
 // Motor positions in encoder counts
 
 #define POS_0_DEGREES 0
-#define POS_90_DEGREES 39375  // Assuming 39375 counts for 90 degree rotation
-#define POS_180_DEGREES 78750
-#define POS_270_DEGREES 118125
-#define FULL_ROTATION_COUNT 157500
+#define POS_90_DEGREES 7389  // 
+#define POS_180_DEGREES 14778
+#define POS_270_DEGREES 22166
+#define FULL_ROTATION_COUNT 29555
 
 // NEOPIXEL settings
 #define DEFAULT_COLOR_0 0x00FF00    // Green
@@ -34,14 +34,14 @@
 #define DEFAULT_ROTATION_INTERVAL 60 // seconds between auto-rotation
 
 // Motion control default values
-#define DEFAULT_POSITION_HYSTERESIS 20
+#define DEFAULT_POSITION_HYSTERESIS 5
 #define DEFAULT_MAX_SPEED 4000.0f
-#define DEFAULT_ACCELERATION 2000.0f
-#define DEFAULT_VEL_LOOP_P 3e-5f
-#define DEFAULT_VEL_LOOP_I 6e-3f
-#define DEFAULT_VEL_LOOP_D -2e-8f
-#define DEFAULT_VEL_FILTER_PERSISTENCE 0.2f
-#define DEFAULT_SPD_ERR_PERSISTENCE 0.2f
+#define DEFAULT_ACCELERATION 500.0f
+#define DEFAULT_VEL_LOOP_P 2e-4f
+#define DEFAULT_VEL_LOOP_I 8e-3f
+#define DEFAULT_VEL_LOOP_D -5e-7f
+#define DEFAULT_VEL_FILTER_PERSISTENCE 0.7f
+#define DEFAULT_SPD_ERR_PERSISTENCE 0.7f
 
 // Configuration file path
 #define CONFIG_FILE "/config.json"
@@ -76,6 +76,7 @@ struct RotatorConfig {
     // Rotation settings
     uint32_t rotation_interval; // seconds
     bool auto_rotation_enabled;
+    bool auto_rotate_forward;
     
     // Motion control parameters
     uint32_t position_hysteresis;

@@ -77,5 +77,6 @@ extern bool debugStreamActive;
 extern WiFiState currentWiFiState;
 
 // External function declarations from rotator.h and config.h
-extern int calculateCurrentAngle();
+extern int positionToAngle(int64_t position);
 extern void rotateToAngle(int angle);
+extern int64_t get_current_position();

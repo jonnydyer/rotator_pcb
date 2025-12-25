@@ -9,6 +9,7 @@
 #define MOTION_CONTROL_INTERVAL_MS 10
 #define AUTO_ROTATION_CHECK_INTERVAL_MS 1000
 #define DEBUG_SEND_INTERVAL_MS 100       // 10Hz debug data streaming
+#define MAX_MOTOR_PWM_DUTY_CYCLE 1.0f
 
 // System state enumeration
 enum SystemState {
@@ -23,16 +24,18 @@ enum SystemState {
 // Structure for motion control information
 struct MotionControlInfo {
     bool motion_active;
-    int32_t target_position;
+    int64_t target_position;
     float velocity;
     float speed_error;
     float speed_error_integral;
     float speed_error_derivative;
+    float pwm_control_out;
 };
 
 // Getter function declarations
-int32_t get_current_position();
+int64_t get_current_position();
 float get_encoder_velocity();
+bool is_motion_active(void);
 MotionControlInfo get_motion_control_info();
 
 // Motion control configuration functions
@@ -45,7 +48,9 @@ void setMotionControlConfig(uint32_t position_hysteresis, float max_speed, float
 void setFullRevolutionCount(int32_t full_revolution);
 
 // Function prototypes
-void move_to_position(int32_t target_position);
+void move_to_position(int64_t target_position);
+
+void reset_motor_control();
 
 // LED control functions
 void setLEDBlinkRate(uint32_t interval_ms);

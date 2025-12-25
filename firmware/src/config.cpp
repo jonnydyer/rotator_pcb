@@ -40,6 +40,7 @@ void resetToDefaultConfig() {
     // Rotation settings
     config.rotation_interval = DEFAULT_ROTATION_INTERVAL;
     config.auto_rotation_enabled = false;
+    config.auto_rotate_forward = true;
     
     // Motion control parameters
     config.position_hysteresis = DEFAULT_POSITION_HYSTERESIS;

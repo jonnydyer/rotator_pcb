@@ -14,111 +14,141 @@ volatile int32_t full_revolution_count = 0;
 void setupRotator() {
     // Initialize the rotation timer
     last_rotation_time = millis();
-    
+
     // Set initial color based on current position
-    int currentAngle = calculateCurrentAngle();
+    int currentAngle = positionToAngle(get_current_position());
     setNeoPixelForAngle(currentAngle);
-    
+
     log_i("Rotator initialized. Current angle: %d degrees", currentAngle);
+}
+
+/**
+ * Helper: Normalize any encoder position to [0, full_rotation_count)
+ * Handles arbitrary positive and negative values
+ */
+static int64_t normalizePosition(int64_t position) {
+    if (config.full_rotation_count <= 0) {
+        log_e("full_rotation_count not calibrated!");
+        return 0;
+    }
+
+    int64_t normalized;
+
+    if (position >= 0) {
+        // Positive case
+        uint64_t full_rotations = position / config.full_rotation_count;
+        normalized = position - (full_rotations * config.full_rotation_count);
+    } else {
+        // Negative case
+        uint64_t full_rotations = (-position) / config.full_rotation_count;
+        normalized = position + ((full_rotations + 1) * config.full_rotation_count);
+    }
+
+    // Ensure result is in [0, full_rotation_count)
+    if (normalized >= config.full_rotation_count) {
+        normalized = 0;
+    }
+
+    return normalized;
+}
+
+/**
+ * Convert angle (0, 90, 180, 270) to encoder count offset
+ */
+int64_t angleToPositionOffset(int angle) {
+    if (config.full_rotation_count <= 0) {
+        log_e("full_rotation_count not calibrated!");
+        return 0;
+    }
+    return (int64_t)angle * config.full_rotation_count / 360;
+}
+
+/**
+ * Convert any encoder position to angle in degrees [0, 359]
+ */
+int positionToAngle(int64_t position) {
+    if (config.full_rotation_count <= 0) {
+        log_e("full_rotation_count not calibrated!");
+        return 0;
+    }
+
+    int64_t normalized = normalizePosition(position);
+
+    // Convert to angle in degrees
+    int angle_degrees = (int)(normalized * 360 / config.full_rotation_count);
+
+    return angle_degrees;
+}
+
+/**
+ * Calculate signed circular distance from one position to another
+ * Positive = forward rotation, Negative = backward rotation
+ * Always returns the shortest path
+ */
+int64_t calculateSignedCircularDistance(int64_t from_position, int64_t to_position) {
+    if (config.full_rotation_count <= 0) {
+        log_e("full_rotation_count not calibrated!");
+        return 0;
+    }
+
+    // Normalize both positions to [0, full_rotation_count)
+    int64_t from_norm = normalizePosition(from_position);
+    int64_t to_norm = normalizePosition(to_position);
+
+    // Calculate direct distance
+    int64_t direct_distance = to_norm - from_norm;
+
+    // Calculate alternate distance (going the other way around)
+    int64_t alternate_distance;
+    if (direct_distance > 0) {
+        alternate_distance = direct_distance - config.full_rotation_count;
+    } else {
+        alternate_distance = direct_distance + config.full_rotation_count;
+    }
+
+    // Return shortest distance (signed)
+    if (llabs(direct_distance) <= llabs(alternate_distance)) {
+        return direct_distance;
+    } else {
+        return alternate_distance;
+    }
 }
 
 /**
  * Calculate the minimum circular distance between two encoder positions
  * Accounts for the circular nature of the encoder
+ * DEPRECATED: Use calculateSignedCircularDistance() instead
  */
-int32_t calculateCircularDistance(int32_t count, int32_t target_pos) {
-    // Linear distance
-    int32_t count_unwrap = (count + full_revolution_count) % full_revolution_count;
-    int32_t target_pos_unwrap = (target_pos + full_revolution_count) % full_revolution_count;
-
-    int32_t d1 = abs(count_unwrap - target_pos_unwrap);
-    int32_t min_dist = (d1 < full_revolution_count / 2 ? d1 : full_revolution_count - d1);
-    // log_i("Minimum distance from %d to %d is %d", 
-    //     count_unwrap, target_pos_unwrap, min_dist);
-    
-    // Return the minimum distance
-    return min_dist;
+int64_t calculateCircularDistance(int64_t count, int64_t target_pos) {
+    return llabs(calculateSignedCircularDistance(count, target_pos));
 }
 
-/**
- * Calculate the current angular position based on encoder count
- */
-int calculateCurrentAngle() {
-    int32_t count = get_current_position();
-    
-    // Find the closest angle using circular distance calculation
-    int32_t dist_0 = calculateCircularDistance(count, config.pos_0_degrees);
-    int32_t dist_90 = calculateCircularDistance(count, config.pos_90_degrees);
-    int32_t dist_180 = calculateCircularDistance(count, config.pos_180_degrees);
-    int32_t dist_270 = calculateCircularDistance(count, config.pos_270_degrees);
-    
-    if (dist_0 <= dist_90 && dist_0 <= dist_180 && dist_0 <= dist_270) {
-        return 0;
-    } else if (dist_90 <= dist_0 && dist_90 <= dist_180 && dist_90 <= dist_270) {
-        return 90;
-    } else if (dist_180 <= dist_0 && dist_180 <= dist_90 && dist_180 <= dist_270) {
-        return 180;
-    } else {
-        return 270;
-    }
-}
 
 /**
  * Rotate to a specific angle (0, 90, 180, 270 degrees)
  * Takes the shortest path to the target angle
  */
 void rotateToAngle(int angle) {
-    int currentAngle = calculateCurrentAngle();
-    int32_t targetPosition;
-    
-    // Determine target position
-    switch (angle) {
-        case 0:
-            targetPosition = config.pos_0_degrees;
-            break;
-        case 90:
-            targetPosition = config.pos_90_degrees;
-            break;
-        case 180:
-            targetPosition = config.pos_180_degrees;
-            break;
-        case 270:
-            targetPosition = config.pos_270_degrees;
-            break;
-        default:
-            log_e("Invalid angle: %d", angle);
-            return;
-    }
-    
-    // Determine the shortest path
-    // Calculate full 360 revolution in encoder counts
-    int32_t fullRevolution = (config.pos_270_degrees - config.pos_0_degrees) * 4/3;
-    if (fullRevolution < 0) fullRevolution = -fullRevolution;
+    int64_t currentPosition = get_current_position();
 
-    int32_t currentPosition = get_current_position();
-    int32_t currentPosition_unwrap = currentPosition % fullRevolution;
-    int32_t wrapCounts = currentPosition-currentPosition_unwrap;
-    
-    // Calculate distances in both directions
-    int32_t directDistance = targetPosition - currentPosition_unwrap;
-    int32_t alternateDistance = (directDistance > 0) ? 
-                                directDistance - fullRevolution : 
-                                directDistance + fullRevolution;
-    
-    // Choose the shortest path
-    int32_t finalTarget = (abs(directDistance) <= abs(alternateDistance)) ? 
-                          targetPosition + wrapCounts : 
-                          (directDistance > 0) ? targetPosition - fullRevolution + wrapCounts : targetPosition + fullRevolution + wrapCounts;
-    
-    log_i("Rotating from %d° to %d°, encoder: %d -> %d", 
-          currentAngle, angle, currentPosition, finalTarget);
-    
+    // Convert target angle to position offset
+    int64_t targetOffset = angleToPositionOffset(angle);
+
+    // Calculate signed circular distance (shortest path)
+    int64_t distance = calculateSignedCircularDistance(currentPosition, targetOffset);
+
+    // Final target = current position + shortest distance
+    int64_t finalTarget = currentPosition + distance;
+
+    log_i("Rotating to %d°, encoder: %lld -> %lld (distance: %lld)",
+          angle, currentPosition, finalTarget, distance);
+
     // Command the motor to move to the target position
     move_to_position(finalTarget);
-    
+
     // Set the NeoPixel color based on the angle
     setNeoPixelForAngle(angle);
-    
+
     // Update timing for auto-rotation
     last_rotation_time = millis();
 }
@@ -146,9 +176,21 @@ void processAutoRotation() {
  * Move to the next 90-degree position in sequence
  */
 void moveToNextPosition() {
-    int currentAngle = calculateCurrentAngle();
-    int nextAngle = (currentAngle - 90 + 360) % 360;
-    
+    int nextAngle;
+
+    int currentAngle = positionToAngle(get_current_position());
+
+    // Round to nearest 90-degree increment
+    int currentAngleSnapped = ((currentAngle + 45) / 90) * 90;
+    if (currentAngleSnapped >= 360) currentAngleSnapped = 0;
+
+    if(config.auto_rotate_forward){
+        nextAngle = (currentAngleSnapped + 90) % 360;
+    }
+    else{
+        nextAngle = (currentAngleSnapped + 360 - 90) % 360;
+    }
+
     rotateToAngle(nextAngle);
 }
 
